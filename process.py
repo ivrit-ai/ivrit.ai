@@ -26,21 +26,31 @@ def bulk_vad(args):
 
     for idx, mp3 in enumerate(mp3s):
         print(f'Processing {idx+1}: {mp3}...')
+
+        mp3_path = pathlib.Path(mp3)
+        source = mp3_path.parent.name
+        episode = mp3_path.stem
+        target_dir = pathlib.Path(args.target_dir) / source / episode
+
+        # Check if file was already processed successfully.
+        try:
+            desc_filename = target_dir / 'desc.json'
+            if desc_filename.is_file():
+                json.load(open(desc_filename, 'r'))
+                print(f'Skipping {mp3}...')
+                continue
+        except:
+            pass 
+
         data = read_audio(mp3, sampling_rate=SAMPLING_RATE)
         speech_timestamps = get_speech_timestamps(data, model, sampling_rate=SAMPLING_RATE)
 
         canonical_splits = [(split['start'] / SAMPLING_RATE, split['end'] / SAMPLING_RATE) for split in speech_timestamps]
 
-        relative_path = mp3.removeprefix(args.root_dir[0]).removeprefix('/')
-        store_splits(mp3, canonical_splits, args.target_dir, relative_path)
+        store_splits(mp3, canonical_splits, target_dir, source, episode)
 
-def store_splits(filename, splits, target_dir, relative_path):
+def store_splits(filename, splits, target_dir, source, episode):
     mp3 = pydub.AudioSegment.from_mp3(filename)
-    newdir = os.path.splitext(relative_path)[0]
-    target_dir = os.path.join(target_dir, newdir)
-
-    source = os.path.basename(os.path.dirname(target_dir))
-    episode = os.path.basename(target_dir)
 
     pathlib.Path(target_dir).mkdir(parents=True, exist_ok=True)
  
