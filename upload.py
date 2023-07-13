@@ -45,7 +45,7 @@ def create_dataset(mp3s):
 
 def initialize_dataset(args):
     # Iterate over each root directory
-    mp3s = utils.find_mp3_files(args.root_dir, args.skip_dir)
+    mp3s = utils.find_files(args.root_dir, args.skip_dir, ['.mp3'])
 
     ds = create_dataset(mp3s)
 

@@ -1,7 +1,8 @@
 import os
+import pathlib
 
-def find_mp3_files(root_directories, skip):
-    mp3s = []
+def find_files(root_directories, skip, extensions):
+    ret_files = []
 
     for directory in root_directories:
         for dir_name, subdirs, files in os.walk(directory):
@@ -12,7 +13,8 @@ def find_mp3_files(root_directories, skip):
 
             # Print the mp3 file names
             for fname in files:
-                if fname.endswith('.mp3'):
-                    mp3s.append(os.path.join(dir_name, fname))
+                path = pathlib.Path(fname)
+                if path.suffix in extensions:
+                    ret_files.append(os.path.join(dir_name, fname))
 
-    return mp3s
+    return ret_files

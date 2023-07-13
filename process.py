@@ -22,7 +22,7 @@ def bulk_vad(args):
     model, torch_utils = torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad')
     (get_speech_timestamps, _, read_audio, _, _) = torch_utils
 
-    mp3s = utils.find_mp3_files(args.root_dir, args.skip_dir)
+    mp3s = utils.find_files(args.root_dir, args.skip_dir, ['.mp3'])
 
     for idx, mp3 in enumerate(mp3s):
         print(f'Processing {idx+1}: {mp3}...')
@@ -60,7 +60,7 @@ def store_splits(filename, splits, target_dir, source, episode):
         end = int(end * 1000) 
 
         target_split = os.path.join(target_dir, f'{idx}.mp3')
-        print(f'Generating {target_split}...')
+        print(f'Generating {target_split}')
 
         mp3[start:end].export(target_split, format='mp3')
 
