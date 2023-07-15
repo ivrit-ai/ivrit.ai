@@ -34,7 +34,7 @@ BATCH_SIZE = 64
 
 def transcribe(args):
     # Iterate over each root directory
-    mp3s = utils.find_files(args.root_dir, args.skip_dir, ['.mp3'])
+    mp3s = [mp3 in utils.find_files(args.root_dir, args.skip_dir, ['.mp3'] if not_processed(mp3))
 
     num_files = len(mp3s)
 
@@ -45,7 +45,7 @@ def transcribe(args):
         print(f'Evaluating #{idx+1}/{num_files}: {mp3}')
         transcribe_single(mp3, args, out['text'])
 
-def transcribe_single(mp3, args, text):
+def not_processed(mp3):
     mp3_fn = pathlib.Path(mp3)
 
     source = mp3_fn.parent.parent.name
@@ -57,11 +57,22 @@ def transcribe_single(mp3, args, text):
 
     try:
         desc = json.load(open(json_fn, 'r'))
-        print('Already transcribed, skipping.')
-        return
+        return False
     except:
         pass
-    
+
+    return True
+
+def transcribe_single(mp3, args, text):
+    mp3_fn = pathlib.Path(mp3)
+
+    source = mp3_fn.parent.parent.name
+    episode = mp3_fn.parent.name
+    target_dir = pathlib.Path(args.target_dir) / source / episode
+    pathlib.Path(target_dir).mkdir(parents=True, exist_ok=True)
+
+    json_fn = target_dir / f'{mp3_fn.stem}.json'
+
     transcript = text
 
     json.dump({'source' : source, 'episode' : episode, 'segment' : mp3_fn.stem, 'text' : transcript, 'transcript_source' : 'asr', 'raw' : transcript}, open(json_fn, 'w'))
