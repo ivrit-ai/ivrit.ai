@@ -1,0 +1,8 @@
+datasets
+mutagen
+openai-whisper
+pydub
+torch
+torchaudio
+transformers
+
