@@ -10,8 +10,6 @@ import datasets
 import torch
 from transformers import pipeline
 
-import mutagen.mp3
-
 ckpt = "openai/whisper-small"
 lang = "he"
 device = 0 if torch.cuda.is_available() else "cpu"
