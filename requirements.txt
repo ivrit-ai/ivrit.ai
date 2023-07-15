@@ -1,7 +1,9 @@
 datasets
+librosa
 mutagen
 openai-whisper
 pydub
+soundfile
 torch
 torchaudio
 transformers

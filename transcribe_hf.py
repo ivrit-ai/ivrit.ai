@@ -34,7 +34,7 @@ BATCH_SIZE = 64
 
 def transcribe(args):
     # Iterate over each root directory
-    mp3s = [mp3 in utils.find_files(args.root_dir, args.skip_dir, ['.mp3'] if not_processed(mp3))
+    mp3s = [mp3 for mp3 in utils.find_files(args.root_dir, args.skip_dir, ['.mp3']) if not_processed(mp3)]
 
     num_files = len(mp3s)
 
