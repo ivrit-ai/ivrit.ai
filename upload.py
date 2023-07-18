@@ -9,7 +9,61 @@ import utils
 
 import mutagen.mp3
 
-def create_dataset(mp3s, is_splits):
+def create_transcripts_dataset(args):
+    files = utils.find_files(args.root_dir, args.skip_dir, ['.json'])
+
+    episodes = []
+    sources = []
+    uuids = []
+    texts = []
+    attrs = []
+
+    #cached_desc = None
+    #cached_uuid = None
+
+    for idx, file in enumerate(files):
+        print(idx)
+        transcript_desc = json.load(open(file))
+
+        file = pathlib.Path(file) 
+
+        episode = file.parent.name
+        source = file.parent.parent.name
+        segment = int(file.stem)
+        uuid = f'{source}/{episode}/{segment}'
+        text = transcript_desc['text']
+
+        #if not cached_uuid == uuid:
+        #    cached_desc = json.load(open(file.parent / 'desc.json'))
+        #    cached_uuid = uuid
+
+        #start = cached_desc['splits'][segment][0]
+        #end = cached_desc['splits'][segment][1]
+        #duration = end - start
+
+        #attr = { 'segment' : segment, 'start' : start, 'end' : end, 'quality' : 1 }
+        attr = { 'segment' : segment, 'quality' : 1 }
+
+        episodes.append(episode)
+        sources.append(source) 
+        uuids.append(uuid)
+        texts.append(text)
+        attrs.append(attr)
+
+    ds = datasets.Dataset.from_dict({
+        'text' : texts,
+        'episode' : episodes,
+        'source' : sources,
+        'uuid' : uuids,
+        'attrs' : attrs
+    })
+
+    return ds
+
+
+def create_audio_dataset(args):
+    files = utils.find_files(args.root_dir, args.skip_dir, ['.mp3', '.mp4'])
+
     total_duration = 0
 
     episodes = []
@@ -17,37 +71,37 @@ def create_dataset(mp3s, is_splits):
     uuids = []
     attrs = []
 
-    hashed_desc = None
-    hashed_uuid = None
+    cached_desc = None
+    cached_uuid = None
 
-    for idx, mp3 in enumerate(mp3s):
+    for idx, file in enumerate(files):
         print(idx)
 
-        mp3 = pathlib.Path(mp3) 
+        file = pathlib.Path(file) 
 
-        if is_splits:
-            episode = mp3.parent.name
-            source = mp3.parent.parent.name
-            segment = int(mp3.stem)
+        if args.splits:
+            episode = file.parent.name
+            source = file.parent.parent.name
+            segment = int(file.stem)
             uuid = f'{source}/{episode}/{segment}'
 
-            if not hashed_uuid == uuid:
-                hashed_desc = json.load(open(mp3.parent / 'desc.json'))
-                hashed_uuid = uuid
+            if not cached_uuid == uuid:
+                cached_desc = json.load(open(file.parent / 'desc.json'))
+                cached_uuid = uuid
 
-            start = hashed_desc['splits'][segment][0]
-            end = hashed_desc['splits'][segment][1]
+            start = cached_desc['splits'][segment][0]
+            end = cached_desc['splits'][segment][1]
             duration = end - start
         else:
-            episode = mp3.stem
-            source = mp3.parent.name
+            episode = file.stem
+            source = file.parent.name
             uuid = f'{source}/{episode}'
-            duration = mutagen.mp3.MP3(mp3).info.length
+            duration = mutagen.mp3.MP3(file).info.length
 
         total_duration += duration
 
         attr = {'license' : 'v1', 'duration' : duration} 
-        if is_splits:
+        if args.splits:
             attr['segment'] = segment
             attr['start'] = start
             attr['end'] = end 
@@ -60,7 +114,7 @@ def create_dataset(mp3s, is_splits):
     print(f'Total dataset size is {total_duration:.2f} seconds.')
 
     ds = datasets.Dataset.from_dict({
-        'audio' : mp3s,
+        'audio' : files,
         'episode' : episodes,
         'source' : sources,
         'uuid' : uuids,
@@ -73,9 +127,11 @@ def create_dataset(mp3s, is_splits):
 
 def initialize_dataset(args):
     # Iterate over each root directory
-    mp3s = utils.find_files(args.root_dir, args.skip_dir, ['.mp3'])
+    if args.transcripts:
+        ds = create_transcripts_dataset(args)
+    else:
+        ds = create_audio_dataset(args)
 
-    ds = create_dataset(mp3s, args.splits)
 
     # For now, uploading a dataset of >200GB tends to fail, so we generate a local DB
     # and upload it using git lfs.
@@ -97,6 +153,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, required=True, help='The dataset name to upload.')
     parser.add_argument('--hf-token', type=str, required=False, help='The HuggingFace token.')
     parser.add_argument('--splits', action='store_true', help='This is a splits dataset.')
+    parser.add_argument('--transcripts', action='store_true', help='This is a transcripts dataset.')
 
     # Parse the arguments
     args = parser.parse_args()
