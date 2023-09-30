@@ -1,0 +1,75 @@
+body {
+    margin: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    font-family: Arial, sans-serif;
+    background-color: #f0f0f0; /* Background color */
+}
+
+#container {
+    display: flex;
+    justify-content: flex-end;
+    flex-direction: column;
+    width: 80%;
+    background-color: #ffffff; /* Container background color */
+    padding: 20px; /* Container padding */
+    border-radius: 5px; /* Container border radius */
+    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.2); /* Container box shadow */
+}
+
+#source-box, #episode-box, #readonly-textbox, #readwrite-textbox {
+    margin: 20px;
+    padding: 10px;
+    font-size: 16px;
+    text-align: right;
+    direction: rtl;
+    border: 1px solid #ddd; /* Textbox border */
+    border-radius: 5px; /* Textbox border radius */
+}
+
+.added {
+    color: green; /* Green for added text */
+}
+
+.deleted {
+    color: red; /* Red for deleted text */
+}
+
+.extra-space {
+    text-decoration: underline;
+    text-decoration-color: green;
+    color: green;
+}
+
+.missing-space {
+    text-decoration: underline;
+    text-decoration-color: red;
+    color: red;
+}
+
+audio {
+    margin: 20px;
+    width: 100%;
+    max-width: 300px; /* Limit the audio player width */
+    background-color: #ffffff; /* Audio player background color */
+    border: 1px solid #ddd; /* Audio player border */
+    border-radius: 5px; /* Audio player border radius */
+}
+
+button {
+    margin: 10px;
+    padding: 20px 30px;
+    font-size: 16px;
+    background-color: #007bff; /* Button background color */
+    color: #ffffff; /* Button text color */
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: #0056b3; /* Button background color on hover */
+}

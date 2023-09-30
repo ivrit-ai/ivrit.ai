@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="stylesheet" href="styles.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text Comparison with Diff-Match-Patch</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/diff_match_patch/20121119/diff_match_patch.js"></script>
+</head>
+<body>
+    <audio controls id="audioPlayer">
+        <!-- Initially, no source is set -->
+    </audio>
+    <div id="container">
+        <div id="source-box"></div>
+        <div id="episode-box"></div>
+        <div id="readonly-textbox" contenteditable="false"></div>
+        <textarea id="readwrite-textbox" rows="4"></textarea>
+        <button id="skipButton">Skip</button>
+        <button id="submitButton">Submit</button>
+    </div>
+
+    <script>
+        const serverUrl = 'http://nas.lifshitz.io:5000'; // Your server URL
+        const audioPlayer = document.getElementById('audioPlayer');
+        const readwriteTextbox = document.getElementById('readwrite-textbox');
+        const readonlyTextbox = document.getElementById('readonly-textbox');
+        const sourceBox = document.getElementById('source-box');
+        const episodeBox = document.getElementById('episode-box');
+        const skipButton = document.getElementById('skipButton');
+        const submitButton = document.getElementById('submitButton');
+        let originalSentence = '';
+
+        function updateContent() {
+            // Make an API request to the server to get the text and audio data
+            fetch(`${serverUrl}/api/getContent`)
+                .then((response) => response.json())
+                .then((data) => {
+                    // Update the audio source, text content, source, and episode
+                    audioPlayer.src = `data:audio/mpeg;base64,${data.audioData}`;
+                    audioPlayer.load();
+                    readwriteTextbox.value = data.text;
+                    sourceBox.textContent = `Source: ${data.source}`;
+                    episodeBox.textContent = `Episode: ${data.episode}`;
+                    currentUUID = data.uuid;
+
+                    // Update the original sentence
+                    originalSentence = data.text;
+
+                    // Update the readonly textbox with text comparison
+                    updateReadonlyTextbox();
+                })
+                .catch((error) => {
+                    console.error('Error fetching content:', error);
+                    // If there's an error, display a message
+                    sourceBox.textContent = 'Error: אנה נסו מאוחר יותר';
+                    episodeBox.textContent = '';
+                    readonlyTextbox.textContent = '';
+                    readwriteTextbox.value = '';
+                });
+        }
+
+        // Event listener for the write box
+        readwriteTextbox.addEventListener('input', function () {
+            // Update the readonly textbox as you type in the write box
+            updateReadonlyTextbox();
+        });
+
+        skipButton.addEventListener('click', function () {
+            updateContent();
+        });
+
+        submitButton.addEventListener('click', function () {
+            // Get the final text from the write/read box
+            const finalText = readwriteTextbox.value;
+
+            // Create a JSON object with UUID and final text
+            const resultData = {
+                uuid: currentUUID,
+                text: finalText
+            };
+
+            // Send the result data to the server
+            fetch(`${serverUrl}/api/submitResult`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(resultData)
+            })
+                .then((response) => response.json())
+                .then((data) => {
+                    // Handle the response from the server if needed
+                    console.log('Result submitted successfully:', data);
+                    // Now, update the content as usual
+                    updateContent();
+                })
+                .catch((error) => {
+                    console.error('Error submitting result:', error);
+                    // Handle the error if needed
+                });
+        });
+
+        function updateReadonlyTextbox() {
+            const modifiedText = readwriteTextbox.value;
+            const dmp = new diff_match_patch();
+            const diffs = dmp.diff_main(originalSentence, modifiedText);
+            dmp.diff_cleanupSemantic(diffs);
+            const html = diffs.map(([op, text]) => {
+                if (op === 0) {
+                    return text; // No difference
+                } else if (op === 1) {
+                    // Check if it's a space character
+                    if (text.trim() === '') {
+                        return `<span class="added extra-space">${text}</span>`; // Added space (green with underline)
+                    } else {
+                        return `<span class="added">${text}</span>`; // Added text (green)
+                    }
+                } else {
+                    // Check if it's a space character
+                    if (text.trim() === '') {
+                        return `<span class="deleted missing-space">${text}</span>`; // Missing space (red with underline)
+                    } else {
+                        return `<span class="deleted">${text}</span>`; // Deleted text (red)
+                    }
+                }
+            }).join('');
+
+            readonlyTextbox.innerHTML = html;
+        }
+
+        updateContent(); // Initialize with the first text and mp3 file
+    </script>
+        <div style="text-align: center; margin-top: 20px;">
+        developed by yarden lifshitz for ivrit.ai
+        <div>
+</body>
+</html>
