@@ -139,7 +139,7 @@ def initialize_dataset(args):
     # Yair, July 2023
 
     #ds.push_to_hub(repo_id=args.dataset, token=args.hf_token)
-    ds.save_to_disk(args.dataset)
+    ds.save_to_disk(args.dataset, num_shards=2000)
 
 if __name__ == '__main__':
     # Define an argument parser
