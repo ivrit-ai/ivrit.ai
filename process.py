@@ -18,7 +18,7 @@ import utils
 torch.set_num_threads(1)
 
 SAMPLING_RATE = 16000
-NUM_PROCESSES = 2
+NUM_PROCESSES = 3
 
 def bulk_vad(args):
     model, torch_utils = torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad')
