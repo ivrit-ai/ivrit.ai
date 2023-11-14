@@ -35,7 +35,7 @@ def bulk_vad(args):
             children_pids.append(pid)
         else:
             bulk_vad_single_process(group_idx, group, get_speech_timestamps, read_audio, model)
-            os.exit(0)
+            sys.exit(0)
 
     for pid in children_pids:
         os.waitpid(pid, 0)
@@ -79,18 +79,29 @@ def store_splits(filename, splits, target_dir, source, episode):
     mp3s = []
 
 
-    ffmpeg_cmd = f'ffmpeg -i "{filename}"'
+    escaped_filename = filename.replace('"', '\\"')
+    ffmpeg_cmd = f'ffmpeg -i "{escaped_filename}"'
+
+    elems = 0
  
     for idx, split in enumerate(splits):
         (start, end) = split
         #start = int(start * 1000)
         #end = int(end * 1000) 
 
-        target_split = os.path.join(target_dir, f'{idx}.mp3')
+        escaped_target_dir = target_dir.as_posix().replace('"', '\\"')
         #ffmpeg_cmd += f' -vn -ar 44100 -ac 0 -b:a 192k -ss {start} -to {end} "{target_dir}/{idx}.mp3"'
-        ffmpeg_cmd += f' -vn -c copy -ss {start} -to {end} "{target_dir}/{idx}.mp3"'
+        ffmpeg_cmd += f' -vn -c copy -ss {start} -to {end} "{escaped_target_dir}/{idx}.mp3"'
 
-    os.system(ffmpeg_cmd)
+        elems += 1
+
+        if elems == 200:
+            os.system(ffmpeg_cmd)
+            ffmpeg_cmd = f'ffmpeg -i "{escaped_filename}"'
+            elems = 0
+
+    if elems > 0:
+        os.system(ffmpeg_cmd)
 
 
 

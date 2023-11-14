@@ -8,9 +8,10 @@ import torch
 import torchaudio
 import io
 
-import whisper
+import os
+import threading
 
-model = whisper.load_model('large-v3')
+import whisper
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024  # 1 Megabyte
@@ -20,9 +21,10 @@ from threading import Semaphore
 MAX_CONCURRENT_TASKS = 1
 task_semaphore = Semaphore(MAX_CONCURRENT_TASKS)
 
-MAX_IN_FLIGHT_TASKS = 10
+MAX_IN_FLIGHT_TASKS = 5000
 in_flight_semaphore = Semaphore(MAX_IN_FLIGHT_TASKS)
 
+whisper_model = None
 
 @app.route('/execute', methods=['POST'])
 def execute_task():
@@ -55,8 +57,11 @@ def process_task(task_type, data):
         mp3_bytes = base64.b64decode(data)
         open(f'{d}/audio.mp3', 'wb').write(mp3_bytes)
 
-        return model.transcribe(f'{d}/audio.mp3', language='he')
+        return whisper_model.transcribe(f'{d}/audio.mp3', language='he', verbose=True)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    print(f'Loading whisper model... pid={os.getpid()} tid={threading.current_thread().native_id}')
+    whisper_model = whisper.load_model('large-v3')
+
+    app.run()
 

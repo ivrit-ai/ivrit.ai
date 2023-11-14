@@ -1,26 +1,63 @@
 #!/usr/bin/python3
 
 import argparse
+import base64
 import json
 import pathlib
 
+import asyncio
+import aiohttp
+
 import utils
 
-import whisper
-
-model = whisper.load_model('small')
+async def fetch(session, url, data):
+    headers = { 'Content-Type' : 'application/json' }
+    async with session.post(url, data=json.dumps(data), headers=headers) as response:
+        return await response.json()
 
 def transcribe(args):
     # Iterate over each root directory
-    mp3s = utils.find_files(args.root_dir, args.skip_dir, ['.mp3'])
-    num_files = len(mp3s)
+    descs = utils.find_files(args.root_dir, args.skip_dir, ['.json'])
 
-    for idx, mp3 in enumerate(mp3s):
-        print(f'Evaluating #{idx+1}/{num_files}: {mp3}')
-        transcribe_single(mp3, args)
+    for idx, _desc in enumerate(descs):
+        print(f'Transcribing episode {idx}, {_desc}.')
+        desc = pathlib.Path(_desc)
+        asyncio.run(transcribe_single(desc, args))
 
-def transcribe_single(mp3, args):
-    mp3_fn = pathlib.Path(mp3)
+url = 'http://127.0.0.1:5000/execute' 
+
+async def transcribe_single(desc, args):
+    j = json.load(open(desc))
+
+    num_segments = len(j['splits'])
+    print(f'Total segments: {num_segments}.') 
+  
+    blobs = []
+
+    async with aiohttp.ClientSession() as session:
+        tasks = []
+        for seg_idx in range(num_segments):
+            seg_path = desc.parent / f'{seg_idx}.mp3'
+            if not seg_path.exists():
+                print(f'Unable to find segment {seg_idx}. Exiting.')
+                sys.exit(-1)
+
+            mp3_data = open(seg_path, 'rb').read()
+
+            payload = {
+                'type': 'audio_processing',
+                'data': base64.b64encode(mp3_data).decode('utf-8'),
+                'token': '' 
+            }
+
+            tasks.append(fetch(session, url, payload))
+
+        responses = await asyncio.gather(*tasks)
+
+        for r in responses:
+            print(r['result']) 
+
+        sys.exit(-1)
 
     source = mp3_fn.parent.parent.name
     episode = mp3_fn.parent.name
