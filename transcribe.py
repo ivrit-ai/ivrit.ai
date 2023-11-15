@@ -4,11 +4,14 @@ import argparse
 import base64
 import json
 import pathlib
+import sys
 
 import asyncio
 import aiohttp
 
 import utils
+
+NUM_ELEMENTS_PER_BATCH = 10
 
 async def fetch(session, url, data):
     headers = { 'Content-Type' : 'application/json' }
@@ -24,47 +27,15 @@ def transcribe(args):
         desc = pathlib.Path(_desc)
         asyncio.run(transcribe_single(desc, args))
 
-url = 'http://127.0.0.1:5000/execute' 
+url = 'http://127.0.0.1:4500/execute' 
 
 async def transcribe_single(desc, args):
-    j = json.load(open(desc))
-
-    num_segments = len(j['splits'])
-    print(f'Total segments: {num_segments}.') 
-  
-    blobs = []
-
-    async with aiohttp.ClientSession() as session:
-        tasks = []
-        for seg_idx in range(num_segments):
-            seg_path = desc.parent / f'{seg_idx}.mp3'
-            if not seg_path.exists():
-                print(f'Unable to find segment {seg_idx}. Exiting.')
-                sys.exit(-1)
-
-            mp3_data = open(seg_path, 'rb').read()
-
-            payload = {
-                'type': 'audio_processing',
-                'data': base64.b64encode(mp3_data).decode('utf-8'),
-                'token': '' 
-            }
-
-            tasks.append(fetch(session, url, payload))
-
-        responses = await asyncio.gather(*tasks)
-
-        for r in responses:
-            print(r['result']) 
-
-        sys.exit(-1)
-
-    source = mp3_fn.parent.parent.name
-    episode = mp3_fn.parent.name
+    source = desc.parent.parent.name
+    episode = desc.parent.name
     target_dir = pathlib.Path(args.target_dir) / source / episode
     pathlib.Path(target_dir).mkdir(parents=True, exist_ok=True)
 
-    json_fn = target_dir / f'{mp3_fn.stem}.json'
+    json_fn = target_dir / f'transcripts.json'
 
     try:
         desc = json.load(open(json_fn, 'r'))
@@ -72,10 +43,40 @@ async def transcribe_single(desc, args):
         return
     except:
         pass
-    
-    transcript = model.transcribe(str(mp3_fn), language='he')
 
-    json.dump({'source' : source, 'episode' : episode, 'segment' : mp3_fn.stem, 'text' : transcript['text'], 'transcript_source' : 'asr', 'raw' : transcript}, open(json_fn, 'w'))
+    j = json.load(open(desc))
+
+    num_segments = len(j['splits'])
+    print(f'Total segments: {num_segments}.') 
+  
+    results = []
+
+    for seg_base in range(0, num_segments, 10):
+        async with aiohttp.ClientSession() as session:
+            tasks = []
+            for seg_idx in range(seg_base, min(seg_base + NUM_ELEMENTS_PER_BATCH, num_segments)):
+                seg_path = desc.parent / f'{seg_idx}.mp3'
+                if not seg_path.exists():
+                    print(f'Unable to find segment {seg_idx}. Exiting.')
+                    sys.exit(-1)
+
+                mp3_data = open(seg_path, 'rb').read()
+
+                payload = {
+                    'type': 'audio_processing',
+                    'data': base64.b64encode(mp3_data).decode('utf-8'),
+                    'token': '' 
+                }
+
+                tasks.append(fetch(session, url, payload))
+
+            responses = await asyncio.gather(*tasks)
+            for r in responses:
+                results.append(r['result'])
+
+            print(results)
+
+    json.dump({'source' : source, 'episode' : episode, 'transcripts' : results}, open(json_fn, 'w'))
 
     print('Done transcribing.')
     
