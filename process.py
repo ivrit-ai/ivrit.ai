@@ -21,6 +21,9 @@ SAMPLING_RATE = 16000
 NUM_PROCESSES = 3
 
 def bulk_vad(args):
+    if args.jobs:
+        NUM_PROCESSES = args.jobs
+
     model, torch_utils = torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad')
     (get_speech_timestamps, _, read_audio, _, _) = torch_utils
 
@@ -116,6 +119,8 @@ if __name__ == '__main__':
                         help='Directories to skip. Can be passed multiple times.')
     parser.add_argument('--target-dir', type=str, required=True,
                         help='The directory where splitted audios will be stored.')
+    parser.add_argument('--jobs', type=int, required=False,
+                        help='Allow N jobs at once.')
 
     # Parse the arguments
     args = parser.parse_args()

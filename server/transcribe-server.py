@@ -14,7 +14,7 @@ import threading
 from faster_whisper import WhisperModel
 
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024  # 1 Megabyte
+app.config['MAX_CONTENT_LENGTH'] = 3 * 1024 * 1024  # 1 Megabyte
 
 from threading import Semaphore
 

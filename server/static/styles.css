@@ -1,0 +1,162 @@
+body {
+    margin: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    font-family: Arial, sans-serif;
+    background-color: #f0f0f0;
+}
+
+#container {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: center;
+    width: 80%;
+    background-color: #ffffff;
+    padding: 10px;
+    border-radius: 5px;
+    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.2);
+    margin-top: 30px;
+    margin-bottom: 10px;
+}
+
+#source-box, #episode-box, #readonly-textbox {
+    width: 80%;
+    margin: 5px 0;
+    padding: 5px;
+    font-size: 14px;
+    text-align: right;
+    direction: rtl;
+
+    /* Remove or comment out the border and background properties */
+    /* border: 1px solid #ddd; */
+    /* background-color: #ffffff; */
+}
+
+#source-box strong {
+    color: #1E90FF; /* Deep Blue */
+}
+
+#episode-box strong {
+    color: #32CD32; /* Lime Green */
+}
+
+#readonly-textbox strong {
+    color: #555555; /* Dark Grey */
+}
+
+#readwrite-textbox {
+    width: 80%;
+    text-align: right;
+    direction: rtl;
+    margin: 5px 0;
+    margin-top: 40px;
+    padding: 5px;
+    font-size: 14px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+
+.added {
+    color: green;
+}
+
+.deleted {
+    color: red;
+    text-decoration: line-through;
+}
+
+.extra-space {
+    text-decoration: underline;
+    text-decoration-color: green;
+    color: green;
+}
+
+.missing-space {
+    text-decoration: underline;
+    text-decoration-color: red;
+    color: red;
+}
+
+audio {
+    width: 100%;
+    max-width: 300px;
+    background-color: #ffffff;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    margin-top: 20px;
+}
+
+button {
+    margin: 0px;
+    padding: 10px 30px;
+    font-size: 14px;
+    background-color: #007bff;
+    color: #ffffff;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: #0056b3;
+}
+
+#difficulty-box {
+    margin: 20px 0;
+    padding: 10px;
+    font-size: 14px;
+    text-align: right;
+    direction: rtl;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    background-color: #ffffff;
+}
+
+.checkbox-group {
+    display: flex;
+    align-items: center;
+    margin-bottom: 2px;
+}
+
+.checkbox-group label {
+    margin-right: 10px; /* Space between checkbox and label */
+}
+
+#complexity-indicator {
+    width: 50%;
+    height: 20px;
+    background: linear-gradient(to right, green 0%, red 100%);
+    position: relative;
+}
+
+#complexity-arrow {
+    position: absolute;
+    top: 20px;
+}
+
+#complexity-arrow::before {
+    content: '';
+    display: block;
+    width: 0; 
+    height: 0; 
+    border-left: 10px solid transparent;
+    border-right: 10px solid transparent;
+    border-top: 10px solid black;
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%) rotate(180deg);
+}
+
+#complexity-text {
+    position: absolute;
+    top: 30px; /* Positioned below the arrow */
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 14px;
+}
+

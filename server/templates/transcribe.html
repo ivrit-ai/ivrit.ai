@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text Comparison with Diff-Match-Patch</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/diff-match-patch/1.0.5/index.js"></script>
+</head>
+<body>
+    <div id="container">
+	<div id="login-info">
+       		Logged in as <span id="username">{{ user_name }}</span>. <a href="/logout">Logout</a>
+    	</div>
+
+        <audio controls id="audioPlayer">
+            <!-- Initially, no source is set -->
+        </audio>
+        <div id="source-box">
+	  <strong>מקור:</strong>
+	</div>
+        <div id="episode-box">
+	  <strong>פרק:</strong>
+	</div>
+        <div id="readonly-textbox" contenteditable="false">
+	  <strong>תמלול ראשוני:</strong>
+	</div>
+	<div id="complexity-indicator">
+	    <div id="complexity-arrow">
+	    </div>
+            <span id="complexity-text">8</span>
+	</div>
+        <textarea id="readwrite-textbox" rows="2"></textarea>
+        <div id="difficulty-box">
+	    <label for="difficulty-box"><strong>קושי בתמלול</strong></label>
+    	    <div class="checkbox-group">
+        	<input type="checkbox" id="unintelligible" name="difficulty" value="unintelligible">
+        	<label for="unclear">לא מובן</label>
+    	    </div>
+	    <div class="checkbox-group">
+        	<input type="checkbox" id="foreign-language" name="difficulty" value="foreign-language">
+        	<label for="unclear">לא עברית</label>
+    	    </div>
+	    <div class="checkbox-group">
+	        <input type="checkbox" id="multiple-speakers" name="difficulty" value="multiple-speakers">
+       	        <label for="multiple-speakers">ריבוי דוברים</label>
+	    </div>
+	    <div class="checkbox-group">
+       		<input type="checkbox" id="noisy" name="difficulty" value="noisy">
+        	<label for="noisy">רועש</label>
+	    </div>
+
+	</div>
+        <button id="submitButton">הגש</button>
+    </div>
+
+    <script>
+        const audioPlayer = document.getElementById('audioPlayer');
+        const readwriteTextbox = document.getElementById('readwrite-textbox');
+        const readonlyTextbox = document.getElementById('readonly-textbox');
+        const sourceBox = document.getElementById('source-box');
+        const episodeBox = document.getElementById('episode-box');
+        const submitButton = document.getElementById('submitButton');
+
+        const unintelligibleCheckbox = document.getElementById('unintelligible');
+        const foreignLanguageCheckbox = document.getElementById('foreign-language');
+        const multipleSpeakersCheckbox = document.getElementById('multiple-speakers');
+        const noisyCheckbox = document.getElementById('noisy');
+
+        let originalSentence = '';
+        let segmentUUID = '';
+
+        function updateContent() {
+            // Make an API request to the server to get the text and audio data
+            fetch(`/api/getContent`)
+                .then((response) => response.json())
+                .then((data) => {
+                    segmentUUID = data.uuid;
+
+                    // Update the audio source, text content, source, and episode
+                    audioPlayer.src = `data:audio/mpeg;base64,${data.audioData}`;
+                    audioPlayer.load();
+                    readwriteTextbox.value = data.text;
+                    sourceBox.innerHTML = `<strong>מקור: </strong> ` + data.source;
+                    episodeBox.innerHTML = `<strong>פרק: </strong> ` + data.episode;
+                    // Update the original sentence
+                    originalSentence = data.text;
+
+                    // Update the readonly textbox with text comparison
+                    updateReadonlyTextbox();
+
+                    unintelligibleCheckbox.checked = false;
+                    foreignLanguageCheckbox.checked = false;
+                    multipleSpeakersCheckbox.checked = false;
+                    noisyCheckbox.checked = false;
+
+		    updateComplexity(data.complexity.toFixed(1));
+                })
+                .catch((error) => {
+                    console.error('Error fetching content:', error);
+                    // If there's an error, display a message
+                    sourceBox.textContent = 'Error: אנא נסו מאוחר יותר';
+                    episodeBox.textContent = '';
+                    readonlyTextbox.textContent = '';
+                    readwriteTextbox.value = '';
+                });
+        }
+
+	function updateComplexity(value) {
+	    const complexityScale = 10;
+	    const indicatorWidth = document.getElementById('complexity-indicator').offsetWidth;
+	    const position = (value / complexityScale) * indicatorWidth;
+	    const arrow = document.getElementById('complexity-arrow');
+	    const text = document.getElementById('complexity-text');
+    
+	    arrow.style.left = position + 'px';
+	    text.textContent = value;
+	    text.style.left = position + 'px'; // Align text with the arrow
+	}
+
+        // Event listener for the write box
+        readwriteTextbox.addEventListener('input', function () {
+            // Update the readonly textbox as you type in the write box
+            updateReadonlyTextbox();
+        });
+
+        submitButton.addEventListener('click', function () {
+            // Get the final text from the write/read box
+            const payload = {
+                text : readwriteTextbox.value,
+                unintelligible : unintelligibleCheckbox.checked,
+                foreign_language : foreignLanguageCheckbox.checked,
+                multiple_speakers : multipleSpeakersCheckbox.checked,
+                noisy : noisyCheckbox.checked
+            }
+
+            const finalText = readwriteTextbox.value;
+
+            // Create a JSON object with UUID and final text
+            const resultData = {
+                uuid: segmentUUID,
+                payload: payload 
+            };
+
+            // Send the result data to the server
+            fetch(`/api/submitResult`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(resultData)
+            })
+                .then((response) => response.json())
+                .then((data) => {
+                    // Update contents for next set to be transcribed
+                    updateContent();
+                })
+                .catch((error) => {
+                    console.error('Error submitting result:', error);
+                    // Handle the error if needed
+                });
+
+            updateContent();
+        });
+
+        function updateReadonlyTextbox() {
+            const modifiedText = readwriteTextbox.value;
+            const dmp = new diff_match_patch();
+            const diffs = dmp.diff_main(originalSentence, modifiedText);
+            dmp.diff_cleanupSemantic(diffs);
+            const html = diffs.map(([op, text]) => {
+                if (op === 0) {
+                    return text; // No difference
+                } else if (op === 1) {
+                    // Check if it's a space character
+                    if (text.trim() === '') {
+                        return `<span class="added extra-space">${text}</span>`; // Added space (green with underline)
+                    } else {
+                        return `<span class="added">${text}</span>`; // Added text (green)
+                    }
+                } else {
+                    // Check if it's a space character
+                    if (text.trim() === '') {
+                        return `<span class="deleted missing-space">${text}</span>`; // Missing space (red with underline)
+                    } else {
+                        return `<span class="deleted">${text}</span>`; // Deleted text (red)
+                    }
+                }
+            }).join('');
+
+            readonlyTextbox.innerHTML = `<strong>תמלול ראשוני: </strong>` + html;
+        }
+
+        updateContent(); // Initialize with the first text and mp3 file
+    </script>
+    <div style="text-align: center; margin-top: 5px;">
+        developed with Yarden Lifshitz for ivrit.ai
+    <div>
+</body>
+</html>
+

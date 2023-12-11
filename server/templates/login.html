@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login with Google</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin-top: 50px;
+        }
+        .container {
+            max-width: 600px;
+            margin: auto;
+            padding: 20px;
+            direction: rtl; /* Right-to-left direction */
+            text-align: center; /* Right align for RTL text */
+        }
+        .login-button {
+            margin-top: 20px;
+	    text-align: center;
+	    
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>תודה שבחרת לעזור במאמצי התמלול של פרויקט ivrit.ai!</h1>
+        <p>למען שמירה על תמלול איכותי, נודה שתתחברו בעזרת חשבון גוגל.<br><br>
+	  רוצים לדעת עוד על הפרויקט? מוזמנים לקרוא עוד ב-<a href="https://ivrit.ai" target="_blank">ivrit.ai</a>.
+	</p>
+        <div class="login-button">
+            <a href="{{ url_for('authorize') }}">
+                <img src="https://developers.google.com/identity/images/btn_google_signin_dark_normal_web.png" alt="Sign in with Google"/>
+            </a>
+        </div>
+    </div>
+</body>
+</html>

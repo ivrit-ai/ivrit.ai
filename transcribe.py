@@ -11,11 +11,14 @@ import aiohttp
 
 import utils
 
-NUM_ELEMENTS_PER_BATCH = 10
+NUM_ELEMENTS_PER_BATCH = 50
 
 async def fetch(session, url, data):
     headers = { 'Content-Type' : 'application/json' }
     async with session.post(url, data=json.dumps(data), headers=headers) as response:
+        if not response.ok:
+            print(response)
+
         return await response.json()
 
 def transcribe(args):
@@ -23,11 +26,11 @@ def transcribe(args):
     descs = utils.find_files(args.root_dir, args.skip_dir, ['.json'])
 
     for idx, _desc in enumerate(descs):
-        print(f'Transcribing episode {idx}, {_desc}.')
+        print(f'Transcribing episode {idx}/{len(descs)}, {_desc}.')
         desc = pathlib.Path(_desc)
         asyncio.run(transcribe_single(desc, args))
 
-url = 'http://127.0.0.1:4500/execute' 
+url = 'http://0.0.0.0:4500/execute' 
 
 async def transcribe_single(desc, args):
     source = desc.parent.parent.name
@@ -51,7 +54,7 @@ async def transcribe_single(desc, args):
   
     results = []
 
-    for seg_base in range(0, num_segments, 10):
+    for seg_base in range(0, num_segments, NUM_ELEMENTS_PER_BATCH):
         async with aiohttp.ClientSession() as session:
             tasks = []
             for seg_idx in range(seg_base, min(seg_base + NUM_ELEMENTS_PER_BATCH, num_segments)):
@@ -73,8 +76,6 @@ async def transcribe_single(desc, args):
             responses = await asyncio.gather(*tasks)
             for r in responses:
                 results.append(r['result'])
-
-            print(results)
 
     json.dump({'source' : source, 'episode' : episode, 'transcripts' : results}, open(json_fn, 'w'))
 
