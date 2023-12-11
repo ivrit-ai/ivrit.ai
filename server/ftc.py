@@ -40,7 +40,7 @@ def initialize_transcripts():
 
     transcripts = []
 
-    t_jsons = utils.find_files(['/media/yair/big/ivrit.ai/transcripts-new'], '', ['.json'])[0:100]
+    t_jsons = utils.find_files(['/media/yair/big/ivrit.ai/transcripts-new'], '', ['.json'])
     for t_idx, t in enumerate(t_jsons):
         print(f'Processing ({t_idx}/{len(t_jsons)}) {t}...')
         j = json.load(open(t, 'r'))
