@@ -53,7 +53,7 @@ def initialize_transcripts():
             max_logprob = -math.inf
 
             for seg in transcript['segments']:
-                texts.append(seg['text'])
+                texts.append(seg['text'].strip())
                 max_logprob = max(max_logprob, seg['avg_logprob'])
 
             text = ' '.join(texts).strip()
