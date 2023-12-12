@@ -9,6 +9,7 @@ import os
 import random
 
 import utils
+import mutagen.mp3
 
 dotenv.load_dotenv()
 
@@ -93,7 +94,8 @@ def authorized():
 
     session['google_token'] = (resp['access_token'], '')
     session['user_email'] = google.get('userinfo').data["email"]
-
+    session['seconds_transcribed'] = 0.0
+    
     session.pop('google_token')
 
     return redirect(url_for('index'))
@@ -117,7 +119,9 @@ def get_content():
         'source': source,
         'episode': episode,
         'uuid' : f'{source}/{episode}/{idx}',
-        'complexity' : 10 - round(10 * elem_index / len(transcripts), 1)
+        'duration' : mutagen.mp3.MP3(fn).info.length,
+        'complexity' : 10 - round(10 * elem_index / len(transcripts), 1),
+        'seconds_transcribed' : session['seconds_transcribed']
     })
 
 @app.route('/api/submitResult', methods=['POST'])
@@ -125,7 +129,8 @@ def submit_content():
     data = request.get_json()
     source, episode, idx = data['uuid'].split('/')
 
-    print(data)
+    if not data['payload']['skipped']:
+        session['seconds_transcribed'] += data['payload']['duration']
 
     with db_models.Session() as s:
         transcript_entry = db_models.Transcript(source=source, episode=episode, segment=idx, created_by=session['user_email'], data=data)

@@ -9,8 +9,11 @@
 </head>
 <body>
     <div id="container">
-	<div id="login-info">
-       		Logged in as <span id="username">{{ user_name }}</span>. <a href="/logout">Logout</a>
+        <div id="login-info">
+       	  <span dir="rtl">מחובר כ-<span id="username">{{ user_name }}</span>. <a href="/logout">התנתק</a></span>
+	  <div id="seconds-transcribed">
+	    דקות שתומללו: 5
+	  </div>
     	</div>
 
         <audio controls id="audioPlayer">
@@ -30,31 +33,47 @@
 	    </div>
             <span id="complexity-text">8</span>
 	</div>
-        <textarea id="readwrite-textbox" rows="2"></textarea>
-        <div id="difficulty-box">
-	    <label for="difficulty-box"><strong>קושי בתמלול</strong></label>
-    	    <div class="checkbox-group">
-        	<input type="checkbox" id="unintelligible" name="difficulty" value="unintelligible">
-        	<label for="unclear">לא מובן</label>
-    	    </div>
-	    <div class="checkbox-group">
-        	<input type="checkbox" id="foreign-language" name="difficulty" value="foreign-language">
-        	<label for="unclear">לא עברית</label>
-    	    </div>
-	    <div class="checkbox-group">
-	        <input type="checkbox" id="multiple-speakers" name="difficulty" value="multiple-speakers">
-       	        <label for="multiple-speakers">ריבוי דוברים</label>
-	    </div>
-	    <div class="checkbox-group">
-       		<input type="checkbox" id="noisy" name="difficulty" value="noisy">
-        	<label for="noisy">רועש</label>
-	    </div>
+        <textarea id="readwrite-textbox" rows="4"></textarea>
 
+	<div class="button-container">
+	    <button id="skipButton" class="button">דילוג</button>
+	    <button id="submitButton" class="button">הגשה</button>
 	</div>
-        <button id="submitButton">הגש</button>
-    </div>
 
+        <div id="skipModal" class="modal">
+	  <div class="modal-wrapper">
+	    <div class="modal-header">
+	      <span class="skip-close">&times;</span>
+	      <span class="header-text">מה הסיבה לדילוג?</span>
+	    </div>
+	      <div class="modal-content">
+              <form id="skipForm">
+		  <div class="checkbox-group">
+                    <label><input type="checkbox" id="unintelligible">לא מובן</label><br>
+		  </div>
+		  <div class="checkbox-group">
+                    <label><input type="checkbox" id="foreign-language">לא עברית</label><br>
+		  </div>
+		  <div class="checkbox-group">
+                    <label><input type="checkbox" id="multiple-speakers">ריבוי דוברים</label><br>
+		  </div>
+		  <div class="checkbox-group">
+                    <label><input type="checkbox" id="noisy">רועש</label><br>
+		  </div>
+		  <div class="checkbox-group">
+		    <label><input type="checkbox" id="too-long">ארוך מדי</label><br>
+		  </div>
+		  <div class="button-container">
+		    <button type="button" id="skipSubmit">הגשה</button>
+		  </div>
+                </form>
+            </div>
+          </div>
+	</div>
+    </div>
+    
     <script>
+        const secondsTranscribedBox = document.getElementById('seconds-transcribed');
         const audioPlayer = document.getElementById('audioPlayer');
         const readwriteTextbox = document.getElementById('readwrite-textbox');
         const readonlyTextbox = document.getElementById('readonly-textbox');
@@ -66,17 +85,22 @@
         const foreignLanguageCheckbox = document.getElementById('foreign-language');
         const multipleSpeakersCheckbox = document.getElementById('multiple-speakers');
         const noisyCheckbox = document.getElementById('noisy');
+        const tooLongCheckbox = document.getElementById('too-long');
 
         let originalSentence = '';
         let segmentUUID = '';
-
+        let segmentDuration = 0.0;
+      
         function updateContent() {
             // Make an API request to the server to get the text and audio data
             fetch(`/api/getContent`)
                 .then((response) => response.json())
                 .then((data) => {
                     segmentUUID = data.uuid;
+		    segmentDuration = data.duration;
 
+		    secondsTranscribedBox.innerHTML = `דקות שתומללו: ` + (data.seconds_transcribed / 60).toFixed(2);
+		    
                     // Update the audio source, text content, source, and episode
                     audioPlayer.src = `data:audio/mpeg;base64,${data.audioData}`;
                     audioPlayer.load();
@@ -93,6 +117,7 @@
                     foreignLanguageCheckbox.checked = false;
                     multipleSpeakersCheckbox.checked = false;
                     noisyCheckbox.checked = false;
+		    tooLongCheckbox.checked = false;
 
 		    updateComplexity(data.complexity.toFixed(1));
                 })
@@ -125,13 +150,20 @@
         });
 
         submitButton.addEventListener('click', function () {
+	    submitCore(false /* skipped */);
+	});
+
+        function submitCore(skipped) {
             // Get the final text from the write/read box
             const payload = {
                 text : readwriteTextbox.value,
+		duration : segmentDuration,
+		skipped : skipped,
                 unintelligible : unintelligibleCheckbox.checked,
                 foreign_language : foreignLanguageCheckbox.checked,
                 multiple_speakers : multipleSpeakersCheckbox.checked,
-                noisy : noisyCheckbox.checked
+                noisy : noisyCheckbox.checked,
+		too_long : tooLongCheckbox.checked
             }
 
             const finalText = readwriteTextbox.value;
@@ -139,9 +171,11 @@
             // Create a JSON object with UUID and final text
             const resultData = {
                 uuid: segmentUUID,
-                payload: payload 
+                payload: payload
             };
 
+	    updateContent();
+	    
             // Send the result data to the server
             fetch(`/api/submitResult`, {
                 method: 'POST',
@@ -159,7 +193,7 @@
                     console.error('Error submitting result:', error);
                     // Handle the error if needed
                 });
-        });
+        }
 
         function updateReadonlyTextbox() {
             const modifiedText = readwriteTextbox.value;
@@ -189,6 +223,36 @@
             readonlyTextbox.innerHTML = `<strong>תמלול ראשוני: </strong>` + html;
         }
 
+        // Configure the skip model
+        var skipModal = document.getElementById("skipModal");
+        var skipButton = document.getElementById("skipButton");
+        var skipSpan = document.getElementsByClassName("skip-close")[0];
+
+        // When the user clicks the button, open the modal 
+        skipButton.onclick = function() {
+	    skipModal.style.display = "block";
+	}
+      
+        // When the user clicks on <span> (x), close the modal
+        skipSpan.onclick = function() {
+	    skipModal.style.display = "none";
+	}
+
+        window.onclick = function(event) {
+	    if (event.target == modal) {
+		skipModal.style.display = "none";
+	    }
+	}
+
+        // Handle modal form submission
+        document.getElementById("skipSubmit").onclick = function() {
+	    // Close the modal
+	    skipModal.style.display = "none";
+	    
+	    submitCore(true /* skipped */);
+	}
+
+      
         updateContent(); // Initialize with the first text and mp3 file
     </script>
     <div style="text-align: center; margin-top: 5px;">
