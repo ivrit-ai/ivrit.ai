@@ -19,6 +19,8 @@ app = Flask(__name__)
 app.secret_key = os.environ['FLASK_APP_SECRET']
 oauth = OAuth(app)
 
+in_dev = 'FTC_STAGING_MODE' in os.environ
+
 transcripts = None
 
 # Configure Google OAuth
@@ -42,6 +44,10 @@ def initialize_transcripts():
     transcripts = []
 
     t_jsons = utils.find_files(['/media/yair/big/ivrit.ai/transcripts-new'], '', ['.json'])
+
+    if in_dev:
+        t_jsons = t_jsons[0:1]
+
     for t_idx, t in enumerate(t_jsons):
         print(f'Processing ({t_idx}/{len(t_jsons)}) {t}...')
         j = json.load(open(t, 'r'))
@@ -65,6 +71,9 @@ def initialize_transcripts():
 
 @app.route('/')
 def index():
+    if in_dev:
+        session['user_email'] = os.environ['FTC_USER_EMAIL']
+
     if 'user_email' in session:
         return render_template('transcribe.html', user_name=session['user_email'])
 
@@ -108,7 +117,7 @@ def get_google_oauth_token():
 def get_content():
     global transcripts
 
-    elem_index = 1000 + random.choice(range(len(transcripts[1000:])))
+    elem_index = random.choice(range(len(transcripts)))
     source, episode, idx, text, max_logprob = transcripts[elem_index]
 
     fn = f'/media/yair/big/ivrit.ai/splits-new/{source}/{episode}/{idx}.mp3'
@@ -121,6 +130,7 @@ def get_content():
         'uuid' : f'{source}/{episode}/{idx}',
         'duration' : mutagen.mp3.MP3(fn).info.length,
         'complexity' : 10 - round(10 * elem_index / len(transcripts), 1),
+        'max_logprob' : max_logprob,
         'seconds_transcribed' : session['seconds_transcribed']
     })
 
@@ -143,5 +153,7 @@ def submit_content():
 if __name__ == '__main__':
     initialize_transcripts()
     print(f'Done loading {len(transcripts)} transcripts.')
-    app.run(host='0.0.0.0', port=4443, ssl_context=('../secrets/certchain.pem', '../secrets/private.key'))
+
+    port = 5005 if in_dev else 4443
+    app.run(host='0.0.0.0', port=port, ssl_context=('../secrets/certchain.pem', '../secrets/private.key'))
 

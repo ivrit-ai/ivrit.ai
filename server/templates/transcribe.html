@@ -11,9 +11,7 @@
     <div id="container">
         <div id="login-info">
        	  <span dir="rtl">מחובר כ-<span id="username">{{ user_name }}</span>. <a href="/logout">התנתק</a></span>
-	  <div id="seconds-transcribed">
-	    דקות שתומללו: 5
-	  </div>
+	  <div id="seconds-transcribed"></div>
     	</div>
 
         <audio controls id="audioPlayer">
@@ -36,7 +34,7 @@
         <textarea id="readwrite-textbox" rows="4"></textarea>
 
 	<div class="button-container">
-	    <button id="skipButton" class="button">דילוג</button>
+	    <button id="skipButton" class="button">לא הצלחתי</button>
 	    <button id="submitButton" class="button">הגשה</button>
 	</div>
 
@@ -44,7 +42,7 @@
 	  <div class="modal-wrapper">
 	    <div class="modal-header">
 	      <span class="skip-close">&times;</span>
-	      <span class="header-text">מה הסיבה לדילוג?</span>
+	      <span class="header-text">מה הסיבה שלא הצלחת?</span>
 	    </div>
 	      <div class="modal-content">
               <form id="skipForm">
@@ -90,7 +88,15 @@
         let originalSentence = '';
         let segmentUUID = '';
         let segmentDuration = 0.0;
-      
+        let segmentMaxLogprob = 0.0;
+
+        function formatTime(seconds) {
+            minutes = Math.floor(seconds / 60);
+            seconds = Math.floor(seconds % 60);
+
+            return `${minutes}:${seconds < 10 ? '0' + seconds : seconds}`;
+        }
+ 
         function updateContent() {
             // Make an API request to the server to get the text and audio data
             fetch(`/api/getContent`)
@@ -98,8 +104,9 @@
                 .then((data) => {
                     segmentUUID = data.uuid;
 		    segmentDuration = data.duration;
+                    segmentMaxLogprob = data.max_logprob;
 
-		    secondsTranscribedBox.innerHTML = `דקות שתומללו: ` + (data.seconds_transcribed / 60).toFixed(2);
+		    secondsTranscribedBox.innerHTML = `דקות שתומללו: ` + formatTime(data.seconds_transcribed);
 		    
                     // Update the audio source, text content, source, and episode
                     audioPlayer.src = `data:audio/mpeg;base64,${data.audioData}`;
@@ -163,7 +170,9 @@
                 foreign_language : foreignLanguageCheckbox.checked,
                 multiple_speakers : multipleSpeakersCheckbox.checked,
                 noisy : noisyCheckbox.checked,
-		too_long : tooLongCheckbox.checked
+		too_long : tooLongCheckbox.checked,
+                orig_text : originalSentence,
+                max_logprob : segmentMaxLogprob
             }
 
             const finalText = readwriteTextbox.value;
@@ -174,8 +183,6 @@
                 payload: payload
             };
 
-	    updateContent();
-	    
             // Send the result data to the server
             fetch(`/api/submitResult`, {
                 method: 'POST',
