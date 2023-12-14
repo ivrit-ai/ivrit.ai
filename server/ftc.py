@@ -7,9 +7,11 @@ import json
 import math
 import os
 import random
+import threading
 
 import utils
 import mutagen.mp3
+from sqlalchemy import func, Float, String
 
 dotenv.load_dotenv()
 
@@ -69,6 +71,24 @@ def initialize_transcripts():
 
     transcripts.sort(key=lambda e: e[4])
 
+transcribed_lock = threading.Lock()
+transcripts_per_user = {}
+
+def add_seconds_transcribed(user, seconds):
+    with transcribed_lock:
+        if not user in transcripts_per_user:
+            db_session = db_models.Session()
+            transcribed_duration = db_session.query(func.sum(func.cast(func.cast(db_models.Transcript.data['payload']['duration'], String), Float))).filter(db_models.Transcript.created_by == user).first()[0]
+
+            if transcribed_duration == None:
+                transcribed_duration = 0.0
+
+            transcripts_per_user[user] = transcribed_duration
+
+        transcripts_per_user[user] += seconds
+
+        return transcripts_per_user[user]    
+
 @app.route('/')
 def index():
     if in_dev:
@@ -103,7 +123,6 @@ def authorized():
 
     session['google_token'] = (resp['access_token'], '')
     session['user_email'] = google.get('userinfo').data["email"]
-    session['seconds_transcribed'] = 0.0
     
     session.pop('google_token')
 
@@ -131,7 +150,7 @@ def get_content():
         'duration' : mutagen.mp3.MP3(fn).info.length,
         'complexity' : 10 - round(10 * elem_index / len(transcripts), 1),
         'max_logprob' : max_logprob,
-        'seconds_transcribed' : session['seconds_transcribed']
+        'seconds_transcribed' : add_seconds_transcribed(session['user_email'], 0.0)
     })
 
 @app.route('/api/submitResult', methods=['POST'])
@@ -140,7 +159,7 @@ def submit_content():
     source, episode, idx = data['uuid'].split('/')
 
     if not data['payload']['skipped']:
-        session['seconds_transcribed'] += data['payload']['duration']
+        add_seconds_transcribed(session['user_email'], data['payload']['duration'])
 
     with db_models.Session() as s:
         transcript_entry = db_models.Transcript(source=source, episode=episode, segment=idx, created_by=session['user_email'], data=data)
