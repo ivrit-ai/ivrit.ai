@@ -27,7 +27,7 @@ body {
     text-align: right;
 }
 
-#source-box, #episode-box, #readonly-textbox {
+#source-box, #episode-box, #segment-box, #readonly-textbox {
     width: 80%;
     margin: 5px 0;
     padding: 5px;
@@ -46,6 +46,10 @@ body {
 
 #episode-box strong {
     color: #32CD32; /* Lime Green */
+}
+
+#segment-box strong {
+    color: #AA336A; /* Dark Pink */
 }
 
 #readonly-textbox strong {

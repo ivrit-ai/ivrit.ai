@@ -1,6 +1,7 @@
 from flask import Flask, redirect, render_template, request, url_for, session, jsonify
 from flask_oauthlib.client import OAuth
 
+import argparse
 import base64
 import dotenv
 import json
@@ -25,6 +26,9 @@ in_dev = 'FTC_STAGING_MODE' in os.environ
 
 transcripts = None
 
+audio_dir = None
+transcripts_dir = None
+
 # Configure Google OAuth
 google = oauth.remote_app(
     'google',
@@ -45,7 +49,7 @@ def initialize_transcripts():
 
     transcripts = []
 
-    t_jsons = utils.find_files(['/media/yair/big/ivrit.ai/transcripts-new'], '', ['.json'])
+    t_jsons = utils.find_files([transcripts_dir], '', ['.json'])
 
     if in_dev:
         t_jsons = t_jsons[0:1]
@@ -139,13 +143,14 @@ def get_content():
     elem_index = random.choice(range(len(transcripts)))
     source, episode, idx, text, max_logprob = transcripts[elem_index]
 
-    fn = f'/media/yair/big/ivrit.ai/splits-new/{source}/{episode}/{idx}.mp3'
+    fn = f'{audio_dir}/{source}/{episode}/{idx}.mp3'
 
     return jsonify({
         'audioData': base64.b64encode(open(fn, 'rb').read()).decode('utf-8'),
         'text': text,
         'source': source,
         'episode': episode,
+        'segment': idx,
         'uuid' : f'{source}/{episode}/{idx}',
         'duration' : mutagen.mp3.MP3(fn).info.length,
         'complexity' : 10 - round(10 * elem_index / len(transcripts), 1),
@@ -170,6 +175,19 @@ def submit_content():
     return jsonify({'status': 'success', 'message': 'Data received successfully'})
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Launch transcription server.')
+
+    # Add the arguments
+    parser.add_argument('--audio-dir', type=str, required=True,
+                        help='Root directory for audio files.')
+    parser.add_argument('--transcripts-dir', type=str, required=True,
+                        help='Root directory for transcripts.')
+
+    # Parse the arguments
+    args = parser.parse_args()
+    audio_dir = args.audio_dir
+    transcripts_dir = args.transcripts_dir 
+
     initialize_transcripts()
     print(f'Done loading {len(transcripts)} transcripts.')
 

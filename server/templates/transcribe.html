@@ -17,19 +17,13 @@
         <audio controls id="audioPlayer">
             <!-- Initially, no source is set -->
         </audio>
-        <div id="source-box">
-	  <strong>מקור:</strong>
-	</div>
-        <div id="episode-box">
-	  <strong>פרק:</strong>
-	</div>
-        <div id="readonly-textbox" contenteditable="false">
-	  <strong>תמלול ראשוני:</strong>
-	</div>
+        <div id="source-box"></div>
+        <div id="episode-box"></div>
+        <div id="segment-box"></div>
+        <div id="readonly-textbox" contenteditable="false"></div>
 	<div id="complexity-indicator">
-	    <div id="complexity-arrow">
-	    </div>
-            <span id="complexity-text">8</span>
+	    <div id="complexity-arrow"></div>
+            <span id="complexity-text"></span>
 	</div>
         <textarea id="readwrite-textbox" rows="4"></textarea>
 
@@ -77,6 +71,7 @@
         const readonlyTextbox = document.getElementById('readonly-textbox');
         const sourceBox = document.getElementById('source-box');
         const episodeBox = document.getElementById('episode-box');
+        const segmentBox = document.getElementById('segment-box');
         const submitButton = document.getElementById('submitButton');
 
         const unintelligibleCheckbox = document.getElementById('unintelligible');
@@ -114,6 +109,8 @@
                     readwriteTextbox.value = data.text;
                     sourceBox.innerHTML = `<strong>מקור: </strong> ` + data.source;
                     episodeBox.innerHTML = `<strong>פרק: </strong> ` + data.episode;
+                    segmentBox.innerHTML = `<strong>מקטע: </strong> ` + data.segment;
+
                     // Update the original sentence
                     originalSentence = data.text;
 
@@ -133,6 +130,7 @@
                     // If there's an error, display a message
                     sourceBox.textContent = 'Error: אנא נסו מאוחר יותר';
                     episodeBox.textContent = '';
+                    segmentBox.textContent = '';
                     readonlyTextbox.textContent = '';
                     readwriteTextbox.value = '';
                 });
