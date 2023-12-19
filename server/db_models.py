@@ -1,4 +1,5 @@
-from sqlalchemy import create_engine, Column, Integer, Text, JSON, DateTime
+from sqlalchemy import create_engine, Column, Integer, Text, DateTime
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -17,7 +18,7 @@ class Transcript(Base):
     episode = Column(Text, nullable=False, index=True)
     segment = Column(Integer, nullable=False, index=True)
     created_by = Column(Text, nullable=False, index=True)
-    data = Column(JSON, nullable=False)
+    data = Column(JSONB, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     def __repr__(self):

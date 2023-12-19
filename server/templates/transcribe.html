@@ -11,7 +11,8 @@
     <div id="container">
         <div id="login-info">
        	  <span dir="rtl">מחובר כ-<span id="username">{{ user_name }}</span>. <a href="/logout">התנתק</a></span>
-	  <div id="seconds-transcribed"></div>
+	  <div id="user-seconds-transcribed"></div>
+	  <div id="total-seconds-transcribed"></div>
     	</div>
 
         <audio controls id="audioPlayer">
@@ -31,6 +32,11 @@
 	    <button id="skipButton" class="button">לא הצלחתי</button>
 	    <button id="submitButton" class="button">הגשה</button>
 	</div>
+
+        <div id="help">
+          <a href="https://www.ivrit.ai/he/%d7%aa%d7%9e%d7%9c%d7%95%d7%9c-%d7%a9%d7%90%d7%9c%d7%95%d7%aa-%d7%95%d7%aa%d7%a9%d7%95%d7%91%d7%95%d7%aa/" target="_blank">עזרה</a>
+        </div>
+
 
         <div id="skipModal" class="modal">
 	  <div class="modal-wrapper">
@@ -65,7 +71,8 @@
     </div>
     
     <script>
-        const secondsTranscribedBox = document.getElementById('seconds-transcribed');
+        const userSecondsTranscribedBox = document.getElementById('user-seconds-transcribed');
+        const totalSecondsTranscribedBox = document.getElementById('total-seconds-transcribed');
         const audioPlayer = document.getElementById('audioPlayer');
         const readwriteTextbox = document.getElementById('readwrite-textbox');
         const readonlyTextbox = document.getElementById('readonly-textbox');
@@ -101,7 +108,9 @@
 		    segmentDuration = data.duration;
                     segmentMaxLogprob = data.max_logprob;
 
-		    secondsTranscribedBox.innerHTML = `דקות שתומללו: ` + formatTime(data.seconds_transcribed);
+		    userSecondsTranscribedBox.innerHTML = `דקות שתומללו על ידך: ` + formatTime(data.user_seconds_transcribed);
+
+		    totalSecondsTranscribedBox.innerHTML = `דקות שתומללו בסה"כ: ` + formatTime(data.total_seconds_transcribed);
 		    
                     // Update the audio source, text content, source, and episode
                     audioPlayer.src = `data:audio/mpeg;base64,${data.audioData}`;
