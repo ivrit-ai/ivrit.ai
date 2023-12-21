@@ -16,9 +16,6 @@
 	  <div id="total-seconds-transcribed"></div>
     	</div>
 
-        <audio controls id="audioPlayer">
-            <!-- Initially, no source is set -->
-        </audio>
         <div id="source-box"></div>
         <div id="episode-box"></div>
         <div id="segment-box"></div>
@@ -27,11 +24,14 @@
 	    <div id="complexity-arrow"></div>
             <span id="complexity-text"></span>
 	</div>
+        <audio controls id="audio-player">
+            <!-- Initially, no source is set -->
+        </audio>
         <textarea id="readwrite-textbox" rows="4"></textarea>
 
 	<div class="button-container">
-	    <button id="skipButton" class="button">לא הצלחתי</button>
-	    <button id="submitButton" class="button">הגשה</button>
+	    <button id="skip-button" class="button">לא הצלחתי</button>
+	    <button id="submit-button" class="button">הגשה</button>
 	</div>
 
         <div id="help">
@@ -74,13 +74,13 @@
     <script>
         const userSecondsTranscribedBox = document.getElementById('user-seconds-transcribed');
         const totalSecondsTranscribedBox = document.getElementById('total-seconds-transcribed');
-        const audioPlayer = document.getElementById('audioPlayer');
+        const audioPlayer = document.getElementById('audio-player');
         const readwriteTextbox = document.getElementById('readwrite-textbox');
         const readonlyTextbox = document.getElementById('readonly-textbox');
         const sourceBox = document.getElementById('source-box');
         const episodeBox = document.getElementById('episode-box');
         const segmentBox = document.getElementById('segment-box');
-        const submitButton = document.getElementById('submitButton');
+        const submitButton = document.getElementById('submit-button');
 
         const unintelligibleCheckbox = document.getElementById('unintelligible');
         const foreignLanguageCheckbox = document.getElementById('foreign-language');
@@ -240,7 +240,7 @@
 
         // Configure the skip model
         var skipModal = document.getElementById("skipModal");
-        var skipButton = document.getElementById("skipButton");
+        var skipButton = document.getElementById("skip-button");
         var skipSpan = document.getElementsByClassName("skip-close")[0];
 
         // When the user clicks the button, open the modal 

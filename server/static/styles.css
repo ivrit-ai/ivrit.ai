@@ -61,7 +61,7 @@ body {
     text-align: right;
     direction: rtl;
     margin: 5px 0;
-    margin-top: 40px;
+    margin-top: 20px;
     padding: 5px;
     font-size: 16px;
     border: 1px solid #ddd;
@@ -95,7 +95,7 @@ audio {
     background-color: #ffffff;
     border: 1px solid #ddd;
     border-radius: 5px;
-    margin-top: 20px;
+    margin-top: 40px;
 }
 
 button {
@@ -111,6 +111,14 @@ button {
 
 button:hover {
     background-color: #0056b3;
+}
+
+#submit-button {
+    background-color: #007bff;
+}
+
+#skip-button {
+    background-color: #ff1a1a;
 }
 
 .button-container {
