@@ -72,7 +72,7 @@
     </div>
     
     <script>
-        const userSecondsTranscribedBox = document.getElementById('user-seconds-transcribed');
+      const userSecondsTranscribedBox = document.getElementById('user-seconds-transcribed');
         const totalSecondsTranscribedBox = document.getElementById('total-seconds-transcribed');
         const audioPlayer = document.getElementById('audio-player');
         const readwriteTextbox = document.getElementById('readwrite-textbox');
@@ -93,59 +93,84 @@
         let segmentDuration = 0.0;
         let segmentMaxLogprob = 0.0;
 
+        let contentQueue = [];
+
         function formatTime(seconds) {
             minutes = Math.floor(seconds / 60);
             seconds = Math.floor(seconds % 60);
 
             return `${minutes}:${seconds < 10 ? '0' + seconds : seconds}`;
         }
- 
-        function updateContent() {
+
+        function fetchContent(prefetch) {
             // Make an API request to the server to get the text and audio data
             fetch(`/api/getContent`)
                 .then((response) => response.json())
                 .then((data) => {
-                    segmentUUID = data.uuid;
-		    segmentDuration = data.duration;
-                    segmentMaxLogprob = data.max_logprob;
-
-		    userSecondsTranscribedBox.innerHTML = `דקות שתומללו על ידך: ` + formatTime(data.user_seconds_transcribed);
-
-		    totalSecondsTranscribedBox.innerHTML = `דקות שתומללו בסה"כ: ` + formatTime(data.total_seconds_transcribed);
-		    
-                    // Update the audio source, text content, source, and episode
-                    audioPlayer.src = `data:audio/mpeg;base64,${data.audioData}`;
-                    audioPlayer.load();
-                    readwriteTextbox.value = data.text;
-                    sourceBox.innerHTML = `<strong>מקור: </strong> ` + data.source;
-                    episodeBox.innerHTML = `<strong>פרק: </strong> ` + data.episode;
-                    segmentBox.innerHTML = `<strong>מקטע: </strong> ` + data.segment;
-
-                    // Update the original sentence
-                    originalSentence = data.text;
-
-                    // Update the readonly textbox with text comparison
-                    updateReadonlyTextbox();
-
-                    unintelligibleCheckbox.checked = false;
-                    foreignLanguageCheckbox.checked = false;
-                    multipleSpeakersCheckbox.checked = false;
-                    noisyCheckbox.checked = false;
-		    tooLongCheckbox.checked = false;
-
-		    updateComplexity(data.complexity.toFixed(1));
+                    if (prefetch) {
+                        contentQueue.push(data);
+                    } else {
+                        updateContentWithData(data);
+                    }
                 })
                 .catch((error) => {
-                    console.error('Error fetching content:', error);
-                    // If there's an error, display a message
-                    sourceBox.textContent = 'Error: אנא נסו מאוחר יותר';
-                    episodeBox.textContent = '';
-                    segmentBox.textContent = '';
-                    readonlyTextbox.textContent = '';
-                    readwriteTextbox.value = '';
+                    if (! prefetch) {
+                        console.error('Error fetching content:', error);
+                        sourceBox.textContent = 'Error: אנא נסו מאוחר יותר';
+                        episodeBox.textContent = '';
+                        segmentBox.textContent = '';
+                        readonlyTextbox.textContent = '';
+                        readwriteTextbox.value = '';
+                    }
                 });
         }
 
+        function updateContent() {
+            if (contentQueue.length > 0) {
+               data = contentQueue.shift();
+               updateContentWithData(data);
+            } else {
+                fetchContent(false /* prefetch */);
+            }
+
+	    // Repopulate the content queue
+            if (contentQueue.length == 0) {
+                fetchContent(true /* prefetch */);
+            }
+        }
+
+        function updateContentWithData(data) { 
+            segmentUUID = data.uuid;
+            segmentDuration = data.duration;
+            segmentMaxLogprob = data.max_logprob;
+
+            userSecondsTranscribedBox.innerHTML = `דקות שתומללו על ידך: ` + formatTime(data.user_seconds_transcribed);
+
+	    totalSecondsTranscribedBox.innerHTML = `דקות שתומללו בסה"כ: ` + formatTime(data.total_seconds_transcribed);
+		    
+            // Update the audio source, text content, source, and episode
+            audioPlayer.src = `data:audio/mpeg;base64,${data.audioData}`;
+            audioPlayer.load();
+            readwriteTextbox.value = data.text;
+            sourceBox.innerHTML = `<strong>מקור: </strong> ` + data.source;
+            episodeBox.innerHTML = `<strong>פרק: </strong> ` + data.episode;
+            segmentBox.innerHTML = `<strong>מקטע: </strong> ` + data.segment;
+
+            // Update the original sentence
+            originalSentence = data.text;
+
+            // Update the readonly textbox with text comparison
+            updateReadonlyTextbox();
+
+            unintelligibleCheckbox.checked = false;
+            foreignLanguageCheckbox.checked = false;
+            multipleSpeakersCheckbox.checked = false;
+            noisyCheckbox.checked = false;
+	    tooLongCheckbox.checked = false;
+
+	    updateComplexity(data.complexity.toFixed(1));
+        }
+      
 	function updateComplexity(value) {
 	    const complexityScale = 10;
 	    const indicatorWidth = document.getElementById('complexity-indicator').offsetWidth;
@@ -198,18 +223,11 @@
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(resultData)
-            })
-                .then((response) => response.json())
-                .then((data) => {
-                    // Update contents for next set to be transcribed
-                    updateContent();
-                })
-                .catch((error) => {
-                    console.error('Error submitting result:', error);
-                    // Handle the error if needed
-                });
-        }
+            });
 
+	    updateContent();
+        }
+      
         function updateReadonlyTextbox() {
             const modifiedText = readwriteTextbox.value;
             const dmp = new diff_match_patch();
@@ -267,7 +285,6 @@
 	    submitCore(true /* skipped */);
 	}
 
-      
         updateContent(); // Initialize with the first text and mp3 file
     </script>
     <div style="text-align: center; margin-top: 5px;">
