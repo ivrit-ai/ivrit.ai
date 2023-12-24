@@ -125,10 +125,15 @@
                 });
         }
 
-        function updateContent() {
+        function updateContent(previousDuration) {
             if (contentQueue.length > 0) {
-               data = contentQueue.shift();
-               updateContentWithData(data);
+                data = contentQueue.shift();
+
+                // For cached data, adjust transcribed seconds per last segment submitted.
+                // This can cause local inaccuracies, but any mistake here will be fixed by the server on the next fetch.
+                data.user_seconds_transcribed += previousDuration;
+                data.total_seconds_transcribed += previousDuration;
+                updateContentWithData(data);
             } else {
                 fetchContent(false /* prefetch */);
             }
@@ -225,7 +230,8 @@
                 body: JSON.stringify(resultData)
             });
 
-	    updateContent();
+            transcribedDuration = skipped ? 0.0 : segmentDuration;
+	    updateContent(transcribedDuration);
         }
       
         function updateReadonlyTextbox() {
@@ -285,7 +291,7 @@
 	    submitCore(true /* skipped */);
 	}
 
-        updateContent(); // Initialize with the first text and mp3 file
+        updateContent(0.0 /* previousDuration */); // Initialize with the first text and mp3 file
     </script>
     <div style="text-align: center; margin-top: 5px;">
         developed with Yarden Lifshitz for ivrit.ai
