@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <link rel="icon" href="{{ url_for('static', filename='favicon.png') }}">
@@ -7,74 +8,77 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Text Comparison with Diff-Match-Patch</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/diff-match-patch/1.0.5/index.js"></script>
+    <link rel="stylesheet" href="https://cdn.plyr.io/3.6.8/plyr.css">
+    <script src="https://cdn.plyr.io/3.6.8/plyr.js"></script>
 </head>
+
 <body>
     <div id="container">
         <div id="login-info">
-       	  <span dir="rtl">מחובר כ-<span id="username">{{ user_name }}</span>. <a href="/logout">התנתק</a></span>
-	  <div id="user-seconds-transcribed"></div>
-	  <div id="total-seconds-transcribed"></div>
-    	</div>
+            <span dir="rtl">מחובר כ-<span id="username">{{ user_name }}</span>. <a href="/logout">התנתק</a></span>
+            <div id="user-seconds-transcribed"></div>
+            <div id="total-seconds-transcribed"></div>
+        </div>
 
         <div id="source-box"></div>
         <div id="episode-box"></div>
         <div id="segment-box"></div>
         <div id="readonly-textbox" contenteditable="false"></div>
-	<div id="complexity-indicator">
-	    <div id="complexity-arrow"></div>
+        <div id="complexity-indicator">
+            <div id="complexity-arrow"></div>
             <span id="complexity-text"></span>
-	</div>
-        <audio controls id="audio-player">
-            <!-- Initially, no source is set -->
+        </div>
+        <audio id="custom-audio" controls>
         </audio>
         <textarea id="readwrite-textbox" rows="4"></textarea>
 
-	<div class="button-container">
-	    <button id="skip-button" class="button">לא הצלחתי</button>
-	    <button id="submit-button" class="button">הגשה</button>
-	</div>
+        <div class="button-container">
+            <button id="skip-button" class="button">לא הצלחתי</button>
+            <button id="submit-button" class="button">הגשה</button>
+        </div>
 
         <div id="help">
-          <a href="https://www.ivrit.ai/he/%d7%aa%d7%9e%d7%9c%d7%95%d7%9c-%d7%a9%d7%90%d7%9c%d7%95%d7%aa-%d7%95%d7%aa%d7%a9%d7%95%d7%91%d7%95%d7%aa/" target="_blank">עזרה</a>
+            <a href="https://www.ivrit.ai/he/%d7%aa%d7%9e%d7%9c%d7%95%d7%9c-%d7%a9%d7%90%d7%9c%d7%95%d7%aa-%d7%95%d7%aa%d7%a9%d7%95%d7%91%d7%95%d7%aa/"
+                target="_blank">עזרה</a>
         </div>
 
 
         <div id="skipModal" class="modal">
-	  <div class="modal-wrapper">
-	    <div class="modal-header">
-	      <span class="skip-close">&times;</span>
-	      <span class="header-text">מה הסיבה שלא הצלחת?</span>
-	    </div>
-	      <div class="modal-content">
-              <form id="skipForm">
-		  <div class="checkbox-group">
-                    <label><input type="checkbox" id="unintelligible">לא מובן</label><br>
-		  </div>
-		  <div class="checkbox-group">
-                    <label><input type="checkbox" id="foreign-language">לא עברית</label><br>
-		  </div>
-		  <div class="checkbox-group">
-                    <label><input type="checkbox" id="multiple-speakers">ריבוי דוברים</label><br>
-		  </div>
-		  <div class="checkbox-group">
-                    <label><input type="checkbox" id="noisy">רועש</label><br>
-		  </div>
-		  <div class="checkbox-group">
-		    <label><input type="checkbox" id="too-long">ארוך מדי</label><br>
-		  </div>
-		  <div class="button-container">
-		    <button type="button" id="skipSubmit">הגשה</button>
-		  </div>
-                </form>
+            <div class="modal-wrapper">
+                <div class="modal-header">
+                    <span class="skip-close">&times;</span>
+                    <span class="header-text">מה הסיבה שלא הצלחת?</span>
+                </div>
+                <div class="modal-content">
+                    <form id="skipForm">
+                        <div class="checkbox-group">
+                            <label><input type="checkbox" id="unintelligible">לא מובן</label><br>
+                        </div>
+                        <div class="checkbox-group">
+                            <label><input type="checkbox" id="foreign-language">לא עברית</label><br>
+                        </div>
+                        <div class="checkbox-group">
+                            <label><input type="checkbox" id="multiple-speakers">ריבוי דוברים</label><br>
+                        </div>
+                        <div class="checkbox-group">
+                            <label><input type="checkbox" id="noisy">רועש</label><br>
+                        </div>
+                        <div class="checkbox-group">
+                            <label><input type="checkbox" id="too-long">ארוך מדי</label><br>
+                        </div>
+                        <div class="button-container">
+                            <button type="button" id="skipSubmit">הגשה</button>
+                        </div>
+                    </form>
+                </div>
             </div>
-          </div>
-	</div>
+        </div>
     </div>
-    
+
     <script>
-      const userSecondsTranscribedBox = document.getElementById('user-seconds-transcribed');
+        const userSecondsTranscribedBox = document.getElementById('user-seconds-transcribed');
         const totalSecondsTranscribedBox = document.getElementById('total-seconds-transcribed');
-        const audioPlayer = document.getElementById('audio-player');
+        const audioPlayer = document.getElementById('custom-audio');
         const readwriteTextbox = document.getElementById('readwrite-textbox');
         const readonlyTextbox = document.getElementById('readonly-textbox');
         const sourceBox = document.getElementById('source-box');
@@ -92,8 +96,12 @@
         let segmentUUID = '';
         let segmentDuration = 0.0;
         let segmentMaxLogprob = 0.0;
+        let segmentFullyPlayed = false;
 
         let contentQueue = [];
+
+        let statsNumPlayClicked = 0;
+
 
         function formatTime(seconds) {
             minutes = Math.floor(seconds / 60);
@@ -114,7 +122,7 @@
                     }
                 })
                 .catch((error) => {
-                    if (! prefetch) {
+                    if (!prefetch) {
                         console.error('Error fetching content:', error);
                         sourceBox.textContent = 'Error: אנא נסו מאוחר יותר';
                         episodeBox.textContent = '';
@@ -135,24 +143,27 @@
                 data.total_seconds_transcribed += previousDuration;
                 updateContentWithData(data);
             } else {
-                fetchContent(false /* prefetch */);
+                fetchContent(false /* prefetch */ );
             }
 
-	    // Repopulate the content queue
+            // Repopulate the content queue
             if (contentQueue.length == 0) {
-                fetchContent(true /* prefetch */);
+                fetchContent(true /* prefetch */ );
             }
         }
 
-        function updateContentWithData(data) { 
+        function updateContentWithData(data) {
             segmentUUID = data.uuid;
             segmentDuration = data.duration;
             segmentMaxLogprob = data.max_logprob;
 
+            segmentFullyPlayed = false;
+            statsNumPlayClicked = 0;
+
             userSecondsTranscribedBox.innerHTML = `דקות שתומללו על ידך: ` + formatTime(data.user_seconds_transcribed);
 
-	    totalSecondsTranscribedBox.innerHTML = `דקות שתומללו בסה"כ: ` + formatTime(data.total_seconds_transcribed);
-		    
+            totalSecondsTranscribedBox.innerHTML = `דקות שתומללו בסה"כ: ` + formatTime(data.total_seconds_transcribed);
+
             // Update the audio source, text content, source, and episode
             audioPlayer.src = `data:audio/mpeg;base64,${data.audioData}`;
             audioPlayer.load();
@@ -171,22 +182,22 @@
             foreignLanguageCheckbox.checked = false;
             multipleSpeakersCheckbox.checked = false;
             noisyCheckbox.checked = false;
-	    tooLongCheckbox.checked = false;
+            tooLongCheckbox.checked = false;
 
-	    updateComplexity(data.complexity.toFixed(1));
+            updateComplexity(data.complexity.toFixed(1));
         }
-      
-	function updateComplexity(value) {
-	    const complexityScale = 10;
-	    const indicatorWidth = document.getElementById('complexity-indicator').offsetWidth;
-	    const position = (value / complexityScale) * indicatorWidth;
-	    const arrow = document.getElementById('complexity-arrow');
-	    const text = document.getElementById('complexity-text');
-    
-	    arrow.style.left = position + 'px';
-	    text.textContent = value;
-	    text.style.left = position + 'px'; // Align text with the arrow
-	}
+
+        function updateComplexity(value) {
+            const complexityScale = 10;
+            const indicatorWidth = document.getElementById('complexity-indicator').offsetWidth;
+            const position = (value / complexityScale) * indicatorWidth;
+            const arrow = document.getElementById('complexity-arrow');
+            const text = document.getElementById('complexity-text');
+
+            arrow.style.left = position + 'px';
+            text.textContent = value;
+            text.style.left = position + 'px'; // Align text with the arrow
+        }
 
         // Event listener for the write box
         readwriteTextbox.addEventListener('input', function () {
@@ -195,22 +206,27 @@
         });
 
         submitButton.addEventListener('click', function () {
-	    submitCore(false /* skipped */);
-	});
+            if (!segmentFullyPlayed) {
+                alert("לא האזנת לכל הקטע.");
+                return;
+            }
+
+            submitCore(false /* skipped */ );
+        });
 
         function submitCore(skipped) {
             // Get the final text from the write/read box
             const payload = {
-                text : readwriteTextbox.value,
-		duration : segmentDuration,
-		skipped : skipped,
-                unintelligible : unintelligibleCheckbox.checked,
-                foreign_language : foreignLanguageCheckbox.checked,
-                multiple_speakers : multipleSpeakersCheckbox.checked,
-                noisy : noisyCheckbox.checked,
-		too_long : tooLongCheckbox.checked,
-                orig_text : originalSentence,
-                max_logprob : segmentMaxLogprob
+                text: readwriteTextbox.value,
+                duration: segmentDuration,
+                skipped: skipped,
+                unintelligible: unintelligibleCheckbox.checked,
+                foreign_language: foreignLanguageCheckbox.checked,
+                multiple_speakers: multipleSpeakersCheckbox.checked,
+                noisy: noisyCheckbox.checked,
+                too_long: tooLongCheckbox.checked,
+                orig_text: originalSentence,
+                max_logprob: segmentMaxLogprob
             }
 
             const finalText = readwriteTextbox.value;
@@ -231,9 +247,9 @@
             });
 
             transcribedDuration = skipped ? 0.0 : segmentDuration;
-	    updateContent(transcribedDuration);
+            updateContent(transcribedDuration);
         }
-      
+
         function updateReadonlyTextbox() {
             const modifiedText = readwriteTextbox.value;
             const dmp = new diff_match_patch();
@@ -268,34 +284,62 @@
         var skipSpan = document.getElementsByClassName("skip-close")[0];
 
         // When the user clicks the button, open the modal 
-        skipButton.onclick = function() {
-	    skipModal.style.display = "block";
-	}
-      
-        // When the user clicks on <span> (x), close the modal
-        skipSpan.onclick = function() {
-	    skipModal.style.display = "none";
-	}
+        skipButton.onclick = function () {
+            if (!segmentFullyPlayed) {
+                alert("לא האזנת לכל הקטע.");
+                return;
+            }
 
-        window.onclick = function(event) {
-	    if (event.target == modal) {
-		skipModal.style.display = "none";
-	    }
-	}
+            skipModal.style.display = "block";
+        }
+
+        // When the user clicks on <span> (x), close the modal
+        skipSpan.onclick = function () {
+            skipModal.style.display = "none";
+        }
+
+        window.onclick = function (event) {
+            if (event.target == modal) {
+                skipModal.style.display = "none";
+            }
+        }
 
         // Handle modal form submission
-        document.getElementById("skipSubmit").onclick = function() {
-	    // Close the modal
-	    skipModal.style.display = "none";
-	    
-	    submitCore(true /* skipped */);
-	}
+        document.getElementById("skipSubmit").onclick = function () {
+            // Close the modal
+            skipModal.style.display = "none";
 
-        updateContent(0.0 /* previousDuration */); // Initialize with the first text and mp3 file
+            submitCore(true /* skipped */ );
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            // Initialize Plyr.js
+            const player = new Plyr(audioPlayer, {
+                controls: ['play', 'progress', 'current-time', 'mute', 'volume', 'speed', 'loop',
+                    'settings'
+                ],
+                speed: {
+                    selected: 1,
+                    options: [0.5, 1],
+                },
+            });
+
+            // Event listener to detect when the play button is pressed
+            player.on('play', function () {
+                statsNumPlayClicked++;
+            });
+        });
+
+        audioPlayer.addEventListener('ended', function () {
+            segmentFullyPlayed = true;
+        });
+
+
+        updateContent(0.0 /* previousDuration */ ); // Initialize with the first text and mp3 file
     </script>
     <div style="text-align: center; margin-top: 5px;">
         developed with Yarden Lifshitz for ivrit.ai
-    <div>
+        <div>
 </body>
-</html>
 
+</html>
