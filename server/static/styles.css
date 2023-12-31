@@ -133,6 +133,7 @@ button:hover {
     height: 20px;
     background: linear-gradient(to right, green 0%, red 100%);
     position: relative;
+    margin-bottom: 30px;
 }
 
 #complexity-arrow {
