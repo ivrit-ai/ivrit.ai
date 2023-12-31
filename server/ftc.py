@@ -198,5 +198,5 @@ transcribed_total = Session().query(func.sum(Transcript.data['payload']['duratio
 
 if __name__ == '__main__':
     port = 5005 if in_dev else 4443
-    app.run(host='0.0.0.0', port=port, ssl_context=('../secrets/certchain.pem', '../secrets/private.key'))
+    app.run(host='0.0.0.0', port=port, ssl_context=('secrets/certchain.pem', 'secrets/private.key'))
 
