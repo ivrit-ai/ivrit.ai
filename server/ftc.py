@@ -178,25 +178,25 @@ def submit_content():
 
     return jsonify({'status': 'success', 'message': 'Data received successfully'})
 
+parser = argparse.ArgumentParser(description='Launch transcription server.')
+
+# Add the arguments
+parser.add_argument('--audio-dir', type=str, required=True,
+                    help='Root directory for audio files.')
+parser.add_argument('--transcripts-dir', type=str, required=True,
+                    help='Root directory for transcripts.')
+
+# Parse the arguments
+args = parser.parse_args()
+audio_dir = args.audio_dir
+transcripts_dir = args.transcripts_dir 
+
+initialize_transcripts()
+print(f'Done loading {len(transcripts)} transcripts.')
+
+transcribed_total = Session().query(func.sum(Transcript.data['payload']['duration'].cast(Float))).filter(Transcript.data['payload']['skipped'].cast(Boolean) == False).first()[0]
+
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Launch transcription server.')
-
-    # Add the arguments
-    parser.add_argument('--audio-dir', type=str, required=True,
-                        help='Root directory for audio files.')
-    parser.add_argument('--transcripts-dir', type=str, required=True,
-                        help='Root directory for transcripts.')
-
-    # Parse the arguments
-    args = parser.parse_args()
-    audio_dir = args.audio_dir
-    transcripts_dir = args.transcripts_dir 
-
-    initialize_transcripts()
-    print(f'Done loading {len(transcripts)} transcripts.')
-
-    transcribed_total = Session().query(func.sum(Transcript.data['payload']['duration'].cast(Float))).filter(Transcript.data['payload']['skipped'].cast(Boolean) == False).first()[0]
-
     port = 5005 if in_dev else 4443
     app.run(host='0.0.0.0', port=port, ssl_context=('../secrets/certchain.pem', '../secrets/private.key'))
 
