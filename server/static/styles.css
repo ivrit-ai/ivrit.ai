@@ -163,8 +163,9 @@ button:hover {
     font-size: 14px;
 }
 
-#help {
-    margin-top: 15px;
+#guidelines {
+    margin-top: 0px;
+    margin-bottom: 15px;
 }
 
 /* The Modal (background) */

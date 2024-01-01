@@ -32,14 +32,14 @@
         </audio>
         <textarea id="readwrite-textbox" rows="4"></textarea>
 
+        <div id="guidelines">
+            <a href="https://www.ivrit.ai/he/%D7%AA%D7%9E%D7%9C%D7%95%D7%9C-%D7%A9%D7%90%D7%9C%D7%95%D7%AA-%D7%95%D7%AA%D7%A9%D7%95%D7%91%D7%95%D7%AA/#%D7%9B%D7%9C%D7%9C%D7%99-%D7%94%D7%AA%D7%9E%D7%9C%D7%95%D7%9C"
+                target="_blank">כללי תמלול</a>
+        </div>
+
         <div class="button-container">
             <button id="skip-button" class="button">לא הצלחתי</button>
             <button id="submit-button" class="button">הגשה</button>
-        </div>
-
-        <div id="help">
-            <a href="https://www.ivrit.ai/he/%d7%aa%d7%9e%d7%9c%d7%95%d7%9c-%d7%a9%d7%90%d7%9c%d7%95%d7%aa-%d7%95%d7%aa%d7%a9%d7%95%d7%91%d7%95%d7%aa/"
-                target="_blank">עזרה</a>
         </div>
 
 
@@ -285,8 +285,8 @@
 
         // When the user clicks the button, open the modal 
         skipButton.onclick = function () {
-            if (!segmentFullyPlayed) {
-                alert("לא האזנת לכל הקטע.");
+            if (statsNumPlayClicked == 0) {
+                alert("לא האזנת לקטע.");
                 return;
             }
 
@@ -315,9 +315,7 @@
         document.addEventListener('DOMContentLoaded', function () {
             // Initialize Plyr.js
             const player = new Plyr(audioPlayer, {
-                controls: ['play', 'progress', 'current-time', 'mute', 'volume', 'speed', 'loop',
-                    'settings'
-                ],
+                controls: ['play', 'progress', 'current-time', 'mute', 'volume', 'settings'],
                 speed: {
                     selected: 1,
                     options: [0.5, 1],
