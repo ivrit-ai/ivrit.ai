@@ -8,8 +8,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Text Comparison with Diff-Match-Patch</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/diff-match-patch/1.0.5/index.js"></script>
-    <link rel="stylesheet" href="https://cdn.plyr.io/3.6.8/plyr.css">
-    <script src="https://cdn.plyr.io/3.6.8/plyr.js"></script>
+    <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css">
+    <script src="https://cdn.plyr.io/3.7.8/plyr.js"></script>
 </head>
 
 <body>
@@ -96,11 +96,13 @@
         let segmentUUID = '';
         let segmentDuration = 0.0;
         let segmentMaxLogprob = 0.0;
-        let segmentFullyPlayed = false;
 
         let contentQueue = [];
 
-        let statsNumPlayClicked = 0;
+        let statsNumFullPlays = 0;
+        let statsNumPauseClicks = 0;
+        let statsNumPlayClicks = 0;
+        let statsStartTime = 0;
 
 
         function formatTime(seconds) {
@@ -157,8 +159,9 @@
             segmentDuration = data.duration;
             segmentMaxLogprob = data.max_logprob;
 
-            segmentFullyPlayed = false;
-            statsNumPlayClicked = 0;
+            statsNumFullPlays = 0;
+            statsNumPlayClicks = 0;
+            statsStartTime = new Date().getTime();
 
             userSecondsTranscribedBox.innerHTML = `דקות שתומללו על ידך: ` + formatTime(data.user_seconds_transcribed);
 
@@ -206,7 +209,7 @@
         });
 
         submitButton.addEventListener('click', function () {
-            if (!segmentFullyPlayed) {
+            if (statsNumFullPlays == 0) {
                 alert("לא האזנת לכל הקטע.");
                 return;
             }
@@ -215,6 +218,8 @@
         });
 
         function submitCore(skipped) {
+            const now = new Date().getTime();
+
             // Get the final text from the write/read box
             const payload = {
                 text: readwriteTextbox.value,
@@ -226,7 +231,13 @@
                 noisy: noisyCheckbox.checked,
                 too_long: tooLongCheckbox.checked,
                 orig_text: originalSentence,
-                max_logprob: segmentMaxLogprob
+                max_logprob: segmentMaxLogprob,
+                stats: {
+                    numFullPlays: statsNumFullPlays,
+                    numPauseClicks : statsNumPauseClicks,
+                    numPlayClicks: statsNumPlayClicks,
+                    time: (now - statsStartTime) / 1000,
+                },
             }
 
             const finalText = readwriteTextbox.value;
@@ -285,7 +296,7 @@
 
         // When the user clicks the button, open the modal 
         skipButton.onclick = function () {
-            if (statsNumPlayClicked == 0) {
+            if (statsNumPlayClicks == 0) {
                 alert("לא האזנת לקטע.");
                 return;
             }
@@ -322,14 +333,21 @@
                 },
             });
 
-            // Event listener to detect when the play button is pressed
             player.on('play', function () {
-                statsNumPlayClicked++;
+                statsNumPlayClicks++;
+            });
+
+            player.on('pause', function () {
+                // Pause can be triggered by both a user pause and the segment ending.
+                // The following check ensures only explicit pauses are counted.
+                if (! player.ended) {
+                    statsNumPauseClicks++;
+                }
             });
         });
 
         audioPlayer.addEventListener('ended', function () {
-            segmentFullyPlayed = true;
+            statsNumFullPlays++;
         });
 
 
