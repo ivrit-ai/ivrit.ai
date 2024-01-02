@@ -165,7 +165,13 @@ def get_content():
 @app.route('/api/submitResult', methods=['POST'])
 def submit_content():
     data = request.get_json()
+    user_agent = request.headers.get('User-Agent')
+    referer = request.headers.get('Referer')
+
     source, episode, idx = data['uuid'].split('/')
+
+    data['payload']['stats']['user_agent'] = user_agent
+    data['payload']['stats']['referer'] = referer
 
     if not data['payload']['skipped']:
         add_seconds_transcribed(session['user_email'], data['payload']['duration'])
