@@ -8,10 +8,12 @@ import json
 import math
 import os
 import random
+import sortedcontainers
 import threading
 
 import utils
 import mutagen.mp3
+from box import Box
 from sqlalchemy import func, Boolean, Float
 
 dotenv.load_dotenv()
@@ -25,6 +27,10 @@ oauth = OAuth(app)
 in_dev = 'FTC_STAGING_MODE' in os.environ
 
 transcripts = None
+transcribed_total = 0.0
+
+per_user_data = {}
+sorted_per_user_data = sortedcontainers.SortedList([], key=lambda member: -member['duration'])
 
 audio_dir = None
 transcripts_dir = None
@@ -75,26 +81,32 @@ def initialize_transcripts():
 
     transcripts.sort(key=lambda e: e[4])
 
-transcribed_lock = threading.Lock()
-transcribed_per_user = {}
-transcribed_total = 0.0
+def initialize_per_user_data():
+    for e in Session().query(func.count(Transcript.id), func.sum(Transcript.data['payload']['duration'].cast(Float)), Transcript.created_by).filter(Transcript.data['payload']['skipped'].cast(Boolean) == False).group_by(Transcript.created_by).all():
+        user = e[2]
 
-def add_seconds_transcribed(user, seconds):
+        data = { 'user' : user,
+                 'segments' : e[0],
+                 'duration' : e[1]
+                }
+
+        per_user_data[user] = data
+        sorted_per_user_data.add(data)
+
+transcribed_lock = threading.Lock()
+
+def count_transcribed_segment(user, seconds):
     global transcribed_total
 
     with transcribed_lock:
-        if not user in transcribed_per_user:
-            transcribed_duration = Session().query(func.sum(Transcript.data['payload']['duration'].cast(Float))).filter(Transcript.created_by == user).filter(Transcript.data['payload']['skipped'].cast(Boolean) == False).first()[0]
+        data = per_user_data[user]
+        sorted_per_user_data.remove(data)
 
-            if transcribed_duration == None:
-                transcribed_duration = 0.0
+        data['segments'] += 1
+        data['duration'] += seconds
+        sorted_per_user_data.add(data)
 
-            transcribed_per_user[user] = transcribed_duration
-
-        transcribed_per_user[user] += seconds
         transcribed_total += seconds
-
-        return transcribed_per_user[user]    
 
 @app.route('/')
 def index():
@@ -130,6 +142,15 @@ def authorized():
 
     session['google_token'] = (resp['access_token'], '')
     session['user_email'] = google.get('userinfo').data["email"]
+
+    # Ensure per_user_data is initialized
+    user = session['user_email']
+    if not user in per_user_data:
+        data = { 'user' : user, 'segments' : 0, 'duration' : 0.0 }
+
+        per_user_data[user] = data
+        sorted_per_user_data.add(data)
+
     
     session.pop('google_token')
 
@@ -158,9 +179,41 @@ def get_content():
         'duration' : mutagen.mp3.MP3(fn).info.length,
         'complexity' : 10 - round(10 * elem_index / len(transcripts), 1),
         'max_logprob' : max_logprob,
-        'user_seconds_transcribed' : add_seconds_transcribed(session['user_email'], 0.0),
-        'total_seconds_transcribed' : transcribed_total
     })
+
+@app.route('/api/getStatistics')
+def get_statistics():
+    user = session['user_email']
+    stats = Box()
+
+    with transcribed_lock:
+        stats.user = session['user_email']
+        stats.user_seconds_transcribed = per_user_data[user]['duration']
+        stats.total_seconds_transcribed = transcribed_total
+
+        set_ranking_info(user, stats)
+
+        return jsonify(stats)
+
+def set_ranking_info(user, stats):
+    idx = sorted_per_user_data.bisect_key_left(-stats.user_seconds_transcribed)
+    percentile = 100 * (idx / len(sorted_per_user_data))
+
+
+    if idx == 0:
+        stats.rank = 1
+        stats.percentile = percentile
+        stats.next_duration = 0.0
+        stats.next_rank = 0
+        stats.text = 'God-like!'
+    else:
+        prev_idx = sorted_per_user_data.bisect_key_left(-sorted_per_user_data[idx - 1]['duration'])
+
+        stats.rank = idx + 1
+        stats.percentile = percentile
+        stats.next_duration = sorted_per_user_data[prev_idx]['duration'] - stats.user_seconds_transcribed
+        stats.next_rank = prev_idx + 1
+        stats.text = 'Go go go!'
 
 @app.route('/api/submitResult', methods=['POST'])
 def submit_content():
@@ -174,7 +227,7 @@ def submit_content():
     data['payload']['stats']['referer'] = referer
 
     if not data['payload']['skipped']:
-        add_seconds_transcribed(session['user_email'], data['payload']['duration'])
+        count_transcribed_segment(session['user_email'], seconds=data['payload']['duration'])
 
     with Session() as s:
         transcript_entry = Transcript(source=source, episode=episode, segment=idx, created_by=session['user_email'], data=data)
@@ -201,6 +254,8 @@ initialize_transcripts()
 print(f'Done loading {len(transcripts)} transcripts.')
 
 transcribed_total = Session().query(func.sum(Transcript.data['payload']['duration'].cast(Float))).filter(Transcript.data['payload']['skipped'].cast(Boolean) == False).first()[0]
+
+initialize_per_user_data()
 
 if __name__ == '__main__':
     port = 5005 if in_dev else 4443

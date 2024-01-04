@@ -18,6 +18,8 @@
             <span dir="rtl">מחובר כ-<span id="username">{{ user_name }}</span>. <a href="/logout">התנתק</a></span>
             <div id="user-seconds-transcribed"></div>
             <div id="total-seconds-transcribed"></div>
+            <div id="current-ranking"></div>
+            <div id="gap-to-level-up"></div>
         </div>
 
         <div id="source-box"></div>
@@ -76,8 +78,12 @@
     </div>
 
     <script>
+        const fetchCacheSize = 4;
+
         const userSecondsTranscribedBox = document.getElementById('user-seconds-transcribed');
         const totalSecondsTranscribedBox = document.getElementById('total-seconds-transcribed');
+        const currentRankingBox = document.getElementById('current-ranking');
+        const gapToLevelUpBox = document.getElementById('gap-to-level-up');
         const audioPlayer = document.getElementById('custom-audio');
         const readwriteTextbox = document.getElementById('readwrite-textbox');
         const readonlyTextbox = document.getElementById('readonly-textbox');
@@ -96,6 +102,10 @@
         let segmentUUID = '';
         let segmentDuration = 0.0;
         let segmentMaxLogprob = 0.0;
+
+        let currentRanking = undefined;
+        let gapToLevelUp = undefined;
+        let nextRanking = undefined;
 
         let contentQueue = [];
 
@@ -135,21 +145,18 @@
                 });
         }
 
-        function updateContent(previousDuration) {
+        function updateContent() {
             if (contentQueue.length > 0) {
                 data = contentQueue.shift();
 
-                // For cached data, adjust transcribed seconds per last segment submitted.
-                // This can cause local inaccuracies, but any mistake here will be fixed by the server on the next fetch.
-                data.user_seconds_transcribed += previousDuration;
-                data.total_seconds_transcribed += previousDuration;
                 updateContentWithData(data);
             } else {
                 fetchContent(false /* prefetch */ );
             }
 
             // Repopulate the content queue
-            if (contentQueue.length == 0) {
+            const entriesToFetch = Math.max(0, fetchCacheSize - contentQueue.length);
+            for (let i = 0; i < entriesToFetch; i++) {
                 fetchContent(true /* prefetch */ );
             }
         }
@@ -162,10 +169,6 @@
             statsNumFullPlays = 0;
             statsNumPlayClicks = 0;
             statsStartTime = new Date().getTime();
-
-            userSecondsTranscribedBox.innerHTML = `דקות שתומללו על ידך: ` + formatTime(data.user_seconds_transcribed);
-
-            totalSecondsTranscribedBox.innerHTML = `דקות שתומללו בסה"כ: ` + formatTime(data.total_seconds_transcribed);
 
             // Update the audio source, text content, source, and episode
             audioPlayer.src = `data:audio/mpeg;base64,${data.audioData}`;
@@ -188,6 +191,24 @@
             tooLongCheckbox.checked = false;
 
             updateComplexity(data.complexity.toFixed(1));
+
+            submitButton.disabled = false;
+            skipButton.disabled = false;
+        }
+
+        function updateStatistics() {
+            fetch(`/api/getStatistics`)
+                .then((response) => response.json())
+                .then((data) => {
+                    userSecondsTranscribedBox.innerHTML = `דקות שתומללו על ידך: ` + formatTime(data.user_seconds_transcribed);
+                    totalSecondsTranscribedBox.innerHTML = `דקות שתומללו בסה"כ: ` + formatTime(data.total_seconds_transcribed);
+
+                    currentRankingBox.innerHTML = `דירוג: ` + data.rank;
+                    gapToLevelUpBox.innerHTML = `מרחק לרמה הבאה: ` + formatTime(data.next_duration);
+                })
+                .catch((error) => {
+                    alert(error);
+                });
         }
 
         function updateComplexity(value) {
@@ -208,16 +229,20 @@
             updateReadonlyTextbox();
         });
 
-        submitButton.addEventListener('click', function () {
+        submitButton.onclick = function () {
             if (statsNumFullPlays == 0) {
                 alert("לא האזנת לכל הקטע.");
                 return;
             }
 
             submitCore(false /* skipped */ );
-        });
+        }
 
         function submitCore(skipped) {
+            // Disable further submissions until new data is loaded
+            submitButton.disabled = true;
+            skipButton.disabled = true;
+
             const now = new Date().getTime();
 
             // Get the final text from the write/read box
@@ -237,6 +262,7 @@
                     numPauseClicks : statsNumPauseClicks,
                     numPlayClicks: statsNumPlayClicks,
                     time: (now - statsStartTime) / 1000,
+                    rank: currentRanking,
                 },
             }
 
@@ -255,10 +281,14 @@
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(resultData)
-            });
+            }).then(response => {
+                if (response.ok) {
+                    updateStatistics();
+                }
+            }).catch(error => {});
 
-            transcribedDuration = skipped ? 0.0 : segmentDuration;
-            updateContent(transcribedDuration);
+            // Trigger content update
+            updateContent();
         }
 
         function updateReadonlyTextbox() {
@@ -351,7 +381,8 @@
         });
 
 
-        updateContent(0.0 /* previousDuration */ ); // Initialize with the first text and mp3 file
+        updateContent(); // Initialize with the first text and mp3 file
+        updateStatistics();
     </script>
     <div style="text-align: center; margin-top: 5px;">
         developed with Yarden Lifshitz for ivrit.ai
