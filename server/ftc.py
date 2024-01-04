@@ -114,6 +114,14 @@ def index():
         session['user_email'] = os.environ['FTC_USER_EMAIL']
 
     if 'user_email' in session:
+        # Ensure per_user_data is initialized
+        user = session['user_email']
+        if not user in per_user_data:
+            data = { 'user' : user, 'segments' : 0, 'duration' : 0.0 }
+
+            per_user_data[user] = data
+            sorted_per_user_data.add(data)
+
         return render_template('transcribe.html', user_name=session['user_email'])
 
     return redirect(url_for('login'))
@@ -142,16 +150,7 @@ def authorized():
 
     session['google_token'] = (resp['access_token'], '')
     session['user_email'] = google.get('userinfo').data["email"]
-
-    # Ensure per_user_data is initialized
-    user = session['user_email']
-    if not user in per_user_data:
-        data = { 'user' : user, 'segments' : 0, 'duration' : 0.0 }
-
-        per_user_data[user] = data
-        sorted_per_user_data.add(data)
-
-    
+ 
     session.pop('google_token')
 
     return redirect(url_for('index'))
