@@ -203,7 +203,7 @@
                     userSecondsTranscribedBox.innerHTML = `דקות שתומללו על ידך: ` + formatTime(data.user_seconds_transcribed);
                     totalSecondsTranscribedBox.innerHTML = `דקות שתומללו בסה"כ: ` + formatTime(data.total_seconds_transcribed);
 
-                    currentRankingBox.innerHTML = `<strong>דירוג:</strong> ` + data.rank;
+                    currentRankingBox.innerHTML = `<strong>דירוג:</strong> ` + data.rank + ` (מתוך ` + data.num_transcribers + `)`;
                     gapToLevelUpBox.innerHTML = `<strong>מרחק לרמה הבאה:</strong> ` + formatTime(data.next_duration);
                 })
                 .catch((error) => {

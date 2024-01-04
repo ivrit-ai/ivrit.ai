@@ -196,12 +196,12 @@ def get_statistics():
 
 def set_ranking_info(user, stats):
     idx = sorted_per_user_data.bisect_key_left(-stats.user_seconds_transcribed)
-    percentile = 100 * (idx / len(sorted_per_user_data))
 
+    stats.num_transcribers = len(sorted_per_user_data)
+    stats.percentile = 100 * (idx / stats.num_transcribers)
 
     if idx == 0:
         stats.rank = 1
-        stats.percentile = percentile
         stats.next_duration = 0.0
         stats.next_rank = 0
         stats.text = 'God-like!'
@@ -209,7 +209,6 @@ def set_ranking_info(user, stats):
         prev_idx = sorted_per_user_data.bisect_key_left(-sorted_per_user_data[idx - 1]['duration'])
 
         stats.rank = idx + 1
-        stats.percentile = percentile
         stats.next_duration = sorted_per_user_data[prev_idx]['duration'] - stats.user_seconds_transcribed
         stats.next_rank = prev_idx + 1
         stats.text = 'Go go go!'
