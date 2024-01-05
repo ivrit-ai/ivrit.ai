@@ -22,9 +22,12 @@
             <div id="gap-to-level-up"></div>
         </div>
 
-        <div id="source-box"></div>
+        <div id='source-segment-box'>
+                <span id="segment-box"></span> |
+                <span id="source-box"></span>
+        </div>
+
         <div id="episode-box"></div>
-        <div id="segment-box"></div>
         <div id="readonly-textbox" contenteditable="false"></div>
         <div id="complexity-indicator">
             <div id="complexity-arrow"></div>
@@ -32,11 +35,14 @@
         </div>
         <audio id="custom-audio" controls>
         </audio>
-        <textarea id="readwrite-textbox" rows="4"></textarea>
+        <textarea id="readwrite-textbox" rows="3"></textarea>
 
         <div id="guidelines">
             <a href="https://www.ivrit.ai/he/%D7%AA%D7%9E%D7%9C%D7%95%D7%9C-%D7%A9%D7%90%D7%9C%D7%95%D7%AA-%D7%95%D7%AA%D7%A9%D7%95%D7%91%D7%95%D7%AA/#%D7%9B%D7%9C%D7%9C%D7%99-%D7%94%D7%AA%D7%9E%D7%9C%D7%95%D7%9C"
                 target="_blank">כללי תמלול</a>
+        </div>
+        <div id="error-msg-container">
+            <span id="error-msg"></span>
         </div>
 
         <div class="button-container">
@@ -91,6 +97,7 @@
         const episodeBox = document.getElementById('episode-box');
         const segmentBox = document.getElementById('segment-box');
         const submitButton = document.getElementById('submit-button');
+        const errorMsgElement = document.getElementById('error-msg');
 
         const unintelligibleCheckbox = document.getElementById('unintelligible');
         const foreignLanguageCheckbox = document.getElementById('foreign-language');
@@ -231,9 +238,10 @@
 
         submitButton.onclick = function () {
             if (statsNumFullPlays == 0) {
-                alert("לא האזנת לכל הקטע.");
+                errorMsgElement.textContent = "לא האזנת לכל הקטע."
                 return;
             }
+            errorMsgElement.textContent = ''
 
             submitCore(false /* skipped */ );
         }
@@ -292,6 +300,9 @@
         }
 
         function updateReadonlyTextbox() {
+            readwriteTextbox.style.height = "";
+            readwriteTextbox.style.height = readwriteTextbox.scrollHeight + "px"
+
             const modifiedText = readwriteTextbox.value;
             const dmp = new diff_match_patch();
             const diffs = dmp.diff_main(originalSentence, modifiedText);
@@ -324,12 +335,14 @@
         var skipButton = document.getElementById("skip-button");
         var skipSpan = document.getElementsByClassName("skip-close")[0];
 
-        // When the user clicks the button, open the modal 
+        // When the user clicks the button, open the modal
         skipButton.onclick = function () {
             if (statsNumPlayClicks == 0) {
-                alert("לא האזנת לקטע.");
+                errorMsgElement.textContent = "לא האזנת להקטע."
                 return;
             }
+            errorMsgElement.textContent = ""
+
 
             skipModal.style.display = "block";
         }
@@ -365,6 +378,7 @@
 
             player.on('play', function () {
                 statsNumPlayClicks++;
+                errorMsgElement.textContent = ""
             });
 
             player.on('pause', function () {
@@ -386,7 +400,7 @@
     </script>
     <div style="text-align: center; margin-top: 5px;">
         developed with Yarden Lifshitz for ivrit.ai
-        <div>
+    </div>
 </body>
 
 </html>

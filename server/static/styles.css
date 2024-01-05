@@ -25,12 +25,13 @@ body {
 
 #login-info {
     text-align: right;
+    width: 80%;
 }
 
-#source-box, #episode-box, #segment-box, #readonly-textbox {
+#segment-box, #episode-box, #readonly-textbox, #source-segment-box{
     width: 80%;
     margin: 5px 0;
-    padding: 5px;
+    /* padding: 5px; */
     font-size: 16px;
     text-align: right;
     direction: rtl;
@@ -38,6 +39,10 @@ body {
     /* Remove or comment out the border and background properties */
     /* border: 1px solid #ddd; */
     /* background-color: #ffffff; */
+}
+
+#readonly-textbox{
+    padding-bottom: 5px;
 }
 
 #source-box strong {
@@ -130,7 +135,8 @@ button:hover {
 
 #complexity-indicator {
     width: 50%;
-    height: 20px;
+    align-self: center;
+    flex: 0 0 20px;
     background: linear-gradient(to right, green 0%, red 100%);
     position: relative;
     margin-bottom: 30px;
@@ -144,8 +150,8 @@ button:hover {
 #complexity-arrow::before {
     content: '';
     display: block;
-    width: 0; 
-    height: 0; 
+    width: 0;
+    height: 0;
     border-left: 10px solid transparent;
     border-right: 10px solid transparent;
     border-top: 10px solid black;
@@ -168,6 +174,26 @@ button:hover {
     margin-bottom: 15px;
 }
 
+#error-msg-container{
+    padding-bottom: 5px;
+    text-align: center;
+    font-weight: bold;
+    color: red;
+    direction: rtl;
+    animation: blink 2s ease infinite;
+}
+@keyframes blink{
+    0%{
+        color: red;
+    }
+    50%{
+        color: #810000;
+    }
+    100%{
+        color: red;
+    }
+}
+
 /* The Modal (background) */
 .modal {
     display: none; /* Hidden by default */
@@ -183,7 +209,6 @@ button:hover {
 }
 
 .modal-header {
-    width: 100%; /* Full width */
     padding: 20px; /* Adjust padding as needed */
     border-bottom: 1px solid #dedede; /* Thin line for the header */
     background-color: gray; /* Light gray background, adjust the color as needed */
@@ -206,17 +231,42 @@ button:hover {
 }
 
 .modal-content {
-    width: 100%;
     margin: 10% auto; /* Vertically center and horizontally center */
-    padding: 0px;
     background-color: #fefefe;
     text-align: right; /* Align text to the right for RTL */
     font-size: 16px;
+    padding: 0 10px;
 }
 
 @media (min-width: 768px) {
     .modal-wrapper {
-	width: 20%;
+	width: 30%;
+	}
+}
+
+@media (max-width: 768px) {
+    #container{
+        width: 90%;
+        max-width: 600px;
+        align-items: stretch;
+        max-height: calc(100vh - 60px);
+        margin-bottom: 10px;
+    }
+    #segment-box, #episode-box, #readonly-textbox, #source-segment-box, #login-info{
+        width: unset;
+        padding: unset;
+    }
+    #readwrite-textbox{
+        width: unset;
+    }
+
+    #guidelines{
+        text-align: center;
+    }
+    .modal-wrapper {
+        bottom: 10px;
+        position: absolute;
+        margin: 10%;
     }
 }
 
