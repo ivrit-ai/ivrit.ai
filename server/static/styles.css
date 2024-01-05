@@ -15,7 +15,7 @@ body {
     justify-content: flex-start;
     align-items: center;
     width: 80%;
-    background-color: #ffffff;
+    background-color: "white";
     padding: 10px;
     border-radius: 5px;
     box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.2);
@@ -119,6 +119,10 @@ button:hover {
 
 #skip-button {
     background-color: #ff1a1a;
+}
+
+#dark-mode-button{
+    background-color: #d0bdf4;
 }
 
 .button-container {
