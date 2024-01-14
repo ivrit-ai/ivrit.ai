@@ -27,7 +27,7 @@ body {
     text-align: right;
 }
 
-#source-box, #episode-box, #segment-box, #readonly-textbox {
+#source-box, #settings-box, #episode-box, #segment-box, #readonly-textbox {
     width: 80%;
     margin: 5px 0;
     padding: 5px;
