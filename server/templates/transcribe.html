@@ -14,12 +14,22 @@
 
 <body>
     <div id="container">
-        <div id="login-info">
-            <span dir="rtl">מחובר כ-<span id="username">{{ user_name }}</span>. <a href="/logout">התנתק</a></span>
-            <div id="user-seconds-transcribed"></div>
-            <div id="total-seconds-transcribed"></div>
-            <div id="current-ranking"></div>
-            <div id="gap-to-level-up"></div>
+        <div id="top-container">
+            <div id="reserved-box"></div>
+            <div id="login-info">
+                <span dir="rtl">מחובר כ-<span id="username">{{ user_name }}</span>. <a href="/logout">התנתק</a></span>
+                <div id="user-seconds-transcribed"></div>
+                <div id="total-seconds-transcribed"></div>
+                <div id="current-ranking"></div>
+                <div id="gap-to-level-up"></div>
+            </div>
+            <div id="switch-box">
+                <div id="switch-text">שינוי בהירות</div>
+                <label class="switch">
+                    <input id="dark-mode-switch" type="checkbox" onchange="changeDarkMode(this);">
+                    <span class="slider round"></span>
+                </label>
+            </div>
         </div>
 
         <div id="source-box"></div>
@@ -91,6 +101,8 @@
         const episodeBox = document.getElementById('episode-box');
         const segmentBox = document.getElementById('segment-box');
         const submitButton = document.getElementById('submit-button');
+        const container = document.getElementById('container');
+        const darkModeSwitch = document.getElementById('dark-mode-switch')
 
         const unintelligibleCheckbox = document.getElementById('unintelligible');
         const foreignLanguageCheckbox = document.getElementById('foreign-language');
@@ -236,6 +248,22 @@
             }
 
             submitCore(false /* skipped */ );
+        }
+
+        function changeDarkMode(element) {
+            if (element.checked) {
+                // Let there be dark.
+                document.body.style.backgroundColor = "#0f0f0f";
+                document.body.style.color = "white";
+                container.style.backgroundColor = "black";
+                container.style.color = "white";
+            } else{
+                // Let there be light.
+                document.body.style.backgroundColor = "#f0f0f0";
+                document.body.style.color = "black";
+                container.style.backgroundColor = "white";
+                container.style.color = "black";
+            }
         }
 
         function submitCore(skipped) {
