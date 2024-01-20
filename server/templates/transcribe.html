@@ -61,7 +61,7 @@
                     <span class="skip-close">&times;</span>
                     <span class="header-text">מה הסיבה שלא הצלחת?</span>
                 </div>
-                <div class="modal-content">
+                <div id="modalContent" class="modal-content">
                     <form id="skipForm">
                         <div class="checkbox-group">
                             <label><input type="checkbox" id="unintelligible">לא מובן</label><br>
@@ -102,7 +102,7 @@
         const segmentBox = document.getElementById('segment-box');
         const submitButton = document.getElementById('submit-button');
         const container = document.getElementById('container');
-        const darkModeSwitch = document.getElementById('dark-mode-switch')
+        const modalContent = document.getElementById('modalContent');
 
         const unintelligibleCheckbox = document.getElementById('unintelligible');
         const foreignLanguageCheckbox = document.getElementById('foreign-language');
@@ -257,12 +257,16 @@
                 document.body.style.color = "white";
                 container.style.backgroundColor = "black";
                 container.style.color = "white";
+                modalContent.style.backgroundColor = "black";
+                modalContent.style.color = "white";
             } else {
                 // Let there be light.
                 document.body.style.backgroundColor = "#f0f0f0";
                 document.body.style.color = "black";
                 container.style.backgroundColor = "white";
                 container.style.color = "black";
+                modalContent.style.backgroundColor = "white";
+                modalContent.style.color = "black";
             }
         }
 
@@ -354,7 +358,7 @@
 
         // When the user clicks the button, open the modal 
         skipButton.onclick = function () {
-            if (statsNumPlayClicks == 0) {
+            if (statsNumPlayClicks == 1) {
                 alert("לא האזנת לקטע.");
                 return;
             }

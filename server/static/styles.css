@@ -270,8 +270,7 @@ button:hover {
 
 .modal-content {
     width: 100%;
-    margin: 10% auto; /* Vertically center and horizontally center */
-    padding: 0px;
+    padding: 10% 0%; /* Vertical padding only */
     background-color: #fefefe;
     text-align: right; /* Align text to the right for RTL */
     font-size: 16px;
