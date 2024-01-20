@@ -23,9 +23,9 @@
                 <div id="current-ranking"></div>
                 <div id="gap-to-level-up"></div>
             </div>
-            <div id="switch-box">
-                <div id="switch-text">שינוי בהירות</div>
-                <label class="switch">
+            <div id="dark-mode-switch-box">
+                <div id="dark-mode-switch-text">שינוי בהירות</div>
+                <label class="dark-mode-switch">
                     <input id="dark-mode-switch" type="checkbox" onchange="changeDarkMode(this);">
                     <span class="slider round"></span>
                 </label>
@@ -163,13 +163,13 @@
 
                 updateContentWithData(data);
             } else {
-                fetchContent(false /* prefetch */ );
+                fetchContent(false /* prefetch */);
             }
 
             // Repopulate the content queue
             const entriesToFetch = Math.max(0, fetchCacheSize - contentQueue.length);
             for (let i = 0; i < entriesToFetch; i++) {
-                fetchContent(true /* prefetch */ );
+                fetchContent(true /* prefetch */);
             }
         }
 
@@ -247,7 +247,7 @@
                 return;
             }
 
-            submitCore(false /* skipped */ );
+            submitCore(false /* skipped */);
         }
 
         function changeDarkMode(element) {
@@ -257,7 +257,7 @@
                 document.body.style.color = "white";
                 container.style.backgroundColor = "black";
                 container.style.color = "white";
-            } else{
+            } else {
                 // Let there be light.
                 document.body.style.backgroundColor = "#f0f0f0";
                 document.body.style.color = "black";
@@ -287,7 +287,7 @@
                 max_logprob: segmentMaxLogprob,
                 stats: {
                     numFullPlays: statsNumFullPlays,
-                    numPauseClicks : statsNumPauseClicks,
+                    numPauseClicks: statsNumPauseClicks,
                     numPlayClicks: statsNumPlayClicks,
                     time: (now - statsStartTime) / 1000,
                     rank: currentRanking,
@@ -313,7 +313,7 @@
                 if (response.ok) {
                     updateStatistics();
                 }
-            }).catch(error => {});
+            }).catch(error => { });
 
             // Trigger content update
             updateContent();
@@ -378,7 +378,7 @@
             // Close the modal
             skipModal.style.display = "none";
 
-            submitCore(true /* skipped */ );
+            submitCore(true /* skipped */);
         }
 
         document.addEventListener('DOMContentLoaded', function () {
@@ -398,7 +398,7 @@
             player.on('pause', function () {
                 // Pause can be triggered by both a user pause and the segment ending.
                 // The following check ensures only explicit pauses are counted.
-                if (! player.ended) {
+                if (!player.ended) {
                     statsNumPauseClicks++;
                 }
             });
