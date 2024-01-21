@@ -6,7 +6,7 @@
     <link rel="icon" href="{{ url_for('static', filename='favicon.png') }}">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Text Comparison with Diff-Match-Patch</title>
+    <title>ivrit.ai crowdsourced transcription</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/diff-match-patch/1.0.5/index.js"></script>
     <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css">
     <script src="https://cdn.plyr.io/3.7.8/plyr.js"></script>
@@ -14,12 +14,22 @@
 
 <body>
     <div id="container">
-        <div id="login-info">
-            <span dir="rtl">מחובר כ-<span id="username">{{ user_name }}</span>. <a href="/logout">התנתק</a></span>
-            <div id="user-seconds-transcribed"></div>
-            <div id="total-seconds-transcribed"></div>
-            <div id="current-ranking"></div>
-            <div id="gap-to-level-up"></div>
+        <div id="top-container">
+            <div id="reserved-box"></div>
+            <div id="login-info">
+                <span dir="rtl">מחובר כ-<span id="username">{{ user_name }}</span>. <a href="/logout">התנתק</a></span>
+                <div id="user-seconds-transcribed"></div>
+                <div id="total-seconds-transcribed"></div>
+                <div id="current-ranking"></div>
+                <div id="gap-to-level-up"></div>
+            </div>
+            <div id="switch-box">
+                <div id="switch-text">שינוי בהירות</div>
+                <label class="switch">
+                    <input id="dark-mode-switch" type="checkbox" onchange="changeDarkMode(this);">
+                    <span class="slider round"></span>
+                </label>
+            </div>
         </div>
 
         <div id="source-box"></div>
@@ -91,6 +101,8 @@
         const episodeBox = document.getElementById('episode-box');
         const segmentBox = document.getElementById('segment-box');
         const submitButton = document.getElementById('submit-button');
+        const container = document.getElementById('container');
+        const darkModeSwitch = document.getElementById('dark-mode-switch')
 
         const unintelligibleCheckbox = document.getElementById('unintelligible');
         const foreignLanguageCheckbox = document.getElementById('foreign-language');
@@ -238,6 +250,22 @@
             submitCore(false /* skipped */ );
         }
 
+        function changeDarkMode(element) {
+            if (element.checked) {
+                // Let there be dark.
+                document.body.style.backgroundColor = "#0f0f0f";
+                document.body.style.color = "white";
+                container.style.backgroundColor = "black";
+                container.style.color = "white";
+            } else{
+                // Let there be light.
+                document.body.style.backgroundColor = "#f0f0f0";
+                document.body.style.color = "black";
+                container.style.backgroundColor = "white";
+                container.style.color = "black";
+            }
+        }
+
         function submitCore(skipped) {
             // Disable further submissions until new data is loaded
             submitButton.disabled = true;
@@ -356,7 +384,7 @@
         document.addEventListener('DOMContentLoaded', function () {
             // Initialize Plyr.js
             const player = new Plyr(audioPlayer, {
-                controls: ['play', 'progress', 'current-time', 'mute', 'volume', 'settings'],
+                controls: ['play', 'progress', 'current-time', 'mute', 'settings'],
                 speed: {
                     selected: 1,
                     options: [0.5, 1],

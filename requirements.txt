@@ -1,10 +1,15 @@
 datasets
+faster-whisper
+flask
+Flask-OAuthlib
 librosa
 mutagen
+numpy
 openai-whisper
 pydub
+sortedcontainers
 soundfile
 torch
 torchaudio
 transformers
-
+Werkzeug==2.2.2
