@@ -122,13 +122,16 @@ def index():
             per_user_data[user] = data
             sorted_per_user_data.add(data)
 
-        return render_template('transcribe.html', user_name=session['user_email'])
+        return render_template('transcribe.html',
+                               user_name=session['user_email'],
+                               google_analytics_tag=os.environ['GOOGLE_ANALYTICS_TAG'])
 
     return redirect(url_for('login'))
 
 @app.route('/login')
 def login():
-    return render_template('login.html')
+    return render_template('login.html',
+                           google_analytics_tag=os.environ['GOOGLE_ANALYTICS_TAG'])
 
 @app.route('/logout')
 def logout():
