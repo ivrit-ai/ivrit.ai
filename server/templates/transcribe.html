@@ -11,18 +11,11 @@
     <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css">
     <script src="https://cdn.plyr.io/3.7.8/plyr.js"></script>
 </head>
-
 <body>
     <div id="container">
         <div id="top-container">
-            <div id="reserved-box"></div>
-            <div id="login-info">
-                <span dir="rtl">מחובר כ-<span id="username">{{ user_name }}</span>. <a href="/logout">התנתק</a></span>
-                <div id="user-seconds-transcribed"></div>
-                <div id="total-seconds-transcribed"></div>
-                <div id="current-ranking"></div>
-                <div id="gap-to-level-up"></div>
-            </div>
+            <div></div>
+            <div></div>
             <div id="dark-mode-switch-box">
                 <div id="dark-mode-switch-text">שינוי בהירות</div>
                 <label class="dark-mode-switch">
@@ -30,6 +23,15 @@
                     <span class="slider round"></span>
                 </label>
             </div>
+            <div></div>
+            <div id="login-info">
+                <span dir="rtl">מחובר כ-<span id="username">{{ user_name }}</span>. <a href="/logout">התנתק</a></span>
+                <div id="user-seconds-transcribed"></div>
+                <div id="total-seconds-transcribed"></div>
+                <div id="current-ranking"></div>
+                <div id="gap-to-level-up"></div>
+            </div>
+            <div></div>
         </div>
 
         <div id="source-box"></div>
