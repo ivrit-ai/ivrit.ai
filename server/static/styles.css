@@ -23,7 +23,7 @@ body {
     margin-bottom: 30px;
 }
 
-#top-container{
+.top-container{
     display: grid;
     grid-template-columns: auto auto auto;
     column-gap: 3px;
