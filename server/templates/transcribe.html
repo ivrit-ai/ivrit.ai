@@ -43,6 +43,12 @@
                 <div id="current-ranking"></div>
                 <div id="gap-to-level-up"></div>
             </div>
+            <div id="settings-box">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" value="" id="auto-play">
+                  <label class="form-check-label" for="auto-play">הפעלה אוטומטית במעבר קטע</label>
+                </div>
+            </div>
             <div></div>
         </div>
 
@@ -199,6 +205,12 @@
             // Update the audio source, text content, source, and episode
             audioPlayer.src = `data:audio/mpeg;base64,${data.audioData}`;
             audioPlayer.load();
+            const autoPlayCheckBox = document.querySelector('#auto-play');
+            if (autoPlayCheckBox.checked) {
+                setTimeout(() => { // https://github.com/yairl/ivrit.ai/pull/27#issuecomment-1914087084
+                    audioPlayer.play();
+                }, 700);
+            }
             readwriteTextbox.value = data.text;
             sourceBox.innerHTML = `<strong>מקור: </strong> ` + data.source;
             episodeBox.innerHTML = `<strong>פרק: </strong> ` + data.episode;
