@@ -21,11 +21,21 @@
     <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css">
     <script src="https://cdn.plyr.io/3.7.8/plyr.js"></script>
 </head>
-
 <body>
     <div id="container">
-        <div id="top-container">
-            <div id="reserved-box"></div>
+        <div class="top-container">
+            <div></div>
+            <div></div>
+            <div id="dark-mode-switch-box">
+                <div id="dark-mode-switch-text">שינוי בהירות</div>
+                <label class="dark-mode-switch">
+                    <input id="dark-mode-switch" type="checkbox" onchange="changeDarkMode(this);">
+                    <span class="slider round"></span>
+                </label>
+            </div>
+        </div>
+        <div class="top-container">
+            <div></div>
             <div id="login-info">
                 <span dir="rtl">מחובר כ-<span id="username">{{ user_name }}</span>. <a href="/logout">התנתק</a></span>
                 <div id="user-seconds-transcribed"></div>
@@ -33,13 +43,7 @@
                 <div id="current-ranking"></div>
                 <div id="gap-to-level-up"></div>
             </div>
-            <div id="switch-box">
-                <div id="switch-text">שינוי בהירות</div>
-                <label class="switch">
-                    <input id="dark-mode-switch" type="checkbox" onchange="changeDarkMode(this);">
-                    <span class="slider round"></span>
-                </label>
-            </div>
+            <div></div>
         </div>
 
         <div id="source-box"></div>
@@ -71,7 +75,7 @@
                     <span class="skip-close">&times;</span>
                     <span class="header-text">מה הסיבה שלא הצלחת?</span>
                 </div>
-                <div class="modal-content">
+                <div id="modalContent" class="modal-content">
                     <form id="skipForm">
                         <div class="checkbox-group">
                             <label><input type="checkbox" id="unintelligible">לא מובן</label><br>
@@ -112,7 +116,7 @@
         const segmentBox = document.getElementById('segment-box');
         const submitButton = document.getElementById('submit-button');
         const container = document.getElementById('container');
-        const darkModeSwitch = document.getElementById('dark-mode-switch')
+        const modalContent = document.getElementById('modalContent');
 
         const unintelligibleCheckbox = document.getElementById('unintelligible');
         const foreignLanguageCheckbox = document.getElementById('foreign-language');
@@ -173,13 +177,13 @@
 
                 updateContentWithData(data);
             } else {
-                fetchContent(false /* prefetch */ );
+                fetchContent(false /* prefetch */);
             }
 
             // Repopulate the content queue
             const entriesToFetch = Math.max(0, fetchCacheSize - contentQueue.length);
             for (let i = 0; i < entriesToFetch; i++) {
-                fetchContent(true /* prefetch */ );
+                fetchContent(true /* prefetch */);
             }
         }
 
@@ -257,7 +261,7 @@
                 return;
             }
 
-            submitCore(false /* skipped */ );
+            submitCore(false /* skipped */);
         }
 
         function changeDarkMode(element) {
@@ -267,12 +271,16 @@
                 document.body.style.color = "white";
                 container.style.backgroundColor = "black";
                 container.style.color = "white";
-            } else{
+                modalContent.style.backgroundColor = "black";
+                modalContent.style.color = "white";
+            } else {
                 // Let there be light.
                 document.body.style.backgroundColor = "#f0f0f0";
                 document.body.style.color = "black";
                 container.style.backgroundColor = "white";
                 container.style.color = "black";
+                modalContent.style.backgroundColor = "white";
+                modalContent.style.color = "black";
             }
         }
 
@@ -297,7 +305,7 @@
                 max_logprob: segmentMaxLogprob,
                 stats: {
                     numFullPlays: statsNumFullPlays,
-                    numPauseClicks : statsNumPauseClicks,
+                    numPauseClicks: statsNumPauseClicks,
                     numPlayClicks: statsNumPlayClicks,
                     time: (now - statsStartTime) / 1000,
                     rank: currentRanking,
@@ -323,7 +331,7 @@
                 if (response.ok) {
                     updateStatistics();
                 }
-            }).catch(error => {});
+            }).catch(error => { });
 
             // Trigger content update
             updateContent();
@@ -388,7 +396,7 @@
             // Close the modal
             skipModal.style.display = "none";
 
-            submitCore(true /* skipped */ );
+            submitCore(true /* skipped */);
         }
 
         document.addEventListener('DOMContentLoaded', function () {
@@ -408,7 +416,7 @@
             player.on('pause', function () {
                 // Pause can be triggered by both a user pause and the segment ending.
                 // The following check ensures only explicit pauses are counted.
-                if (! player.ended) {
+                if (!player.ended) {
                     statsNumPauseClicks++;
                 }
             });
