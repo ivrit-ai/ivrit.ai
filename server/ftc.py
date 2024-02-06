@@ -1,9 +1,11 @@
-from flask import Flask, redirect, render_template, request, url_for, session, jsonify
+from flask import Flask, Response, redirect, render_template, request, url_for, session, jsonify
 from flask_oauthlib.client import OAuth
 
 import argparse
 import base64
 import dotenv
+import gzip
+import io
 import json
 import math
 import os
@@ -18,6 +20,7 @@ from sqlalchemy import func, Boolean, Float
 
 dotenv.load_dotenv()
 
+import db_models
 from db_models import Session, Transcript
 
 app = Flask(__name__)
@@ -113,20 +116,20 @@ def index():
     if in_dev:
         session['user_email'] = os.environ['FTC_USER_EMAIL']
 
-    if 'user_email' in session:
-        # Ensure per_user_data is initialized
-        user = session['user_email']
-        if not user in per_user_data:
-            data = { 'user' : user, 'segments' : 0, 'duration' : 0.0 }
+    if not 'user_email' in session:
+        return redirect(url_for('login'))
 
-            per_user_data[user] = data
-            sorted_per_user_data.add(data)
+    # Ensure per_user_data is initialized
+    user = session['user_email']
+    if not user in per_user_data:
+        data = { 'user' : user, 'segments' : 0, 'duration' : 0.0 }
 
-        return render_template('transcribe.html',
-                               user_name=session['user_email'],
-                               google_analytics_tag=os.environ['GOOGLE_ANALYTICS_TAG'])
+        per_user_data[user] = data
+        sorted_per_user_data.add(data)
 
-    return redirect(url_for('login'))
+    return render_template('transcribe.html',
+                            user_name=session['user_email'],
+                            google_analytics_tag=os.environ['GOOGLE_ANALYTICS_TAG'])
 
 @app.route('/login')
 def login():
@@ -237,6 +240,29 @@ def submit_content():
         s.close()
 
     return jsonify({'status': 'success', 'message': 'Data received successfully'})
+
+# Ability to dump entire database directly from the server.
+# Not enabled yet, until there's access control in place.
+#@app.route('/api/fetchDatabase')
+def fetch_database():
+    if not 'user_email' in session:
+        return redirect(url_for('login'))
+
+    jdata = db_models.table_to_json_str(db_models.Transcript)
+        
+    gzip_buffer = io.BytesIO()
+    with gzip.GzipFile(mode='wb', fileobj=gzip_buffer) as gzip_file:
+        gzip_file.write(jdata.encode('utf-8'))  # Write the bytes of the JSON string
+    
+    # Get the byte value of the compressed data
+    gzip_data = gzip_buffer.getvalue()
+    
+    # Send the gzipped response
+    return Response(
+        gzip_data,
+        mimetype='application/gzip',
+        headers={"Content-Disposition": "attachment;filename=data.json.gz"}
+    )
 
 parser = argparse.ArgumentParser(description='Launch transcription server.')
 

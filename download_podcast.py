@@ -2,14 +2,16 @@
 
 import argparse
 import feedparser
+import http.client
 import requests
 from datetime import datetime
-import pydub
+import yt_dlp
 
 import os
 import pathlib
 import re
 import shlex
+import subprocess
 import sys
 
 def download_podcast(feed, target_dir):
@@ -46,17 +48,26 @@ def download_podcast(feed, target_dir):
         fn_mp3 = re.sub(r'[\\/*?:"<>|]', '', fn_mp3)
         fn_mp3 = trim_filename(fn_mp3)
         fn_mp3 = target_dir / f'{fn_mp3}.mp3'
-    
-        print(f'Downloading {fn}...')
 
         if not os.path.exists(fn) and not os.path.exists(fn_mp3):
-            download_file(download_link, fn)
+            print(f'Downloading {fn}...')
+
+            try:
+                download_file(download_link, fn)
+            except yt_dlp.utils.DownloadError:
+                print(f'Skipping {download_link} as yt_dlp is unable to access it.')
+                continue
 
             if file_type != 'mp3':
-                pydub.AudioSegment.from_file(fn).export(fn_mp3, format='mp3')
+                # This code used pydub in the past.
+                # pydub fails conversion for some cases, while ffmpeg plays nice for a wider range of inputs.
+                os.system(f'ffmpeg -i {shlex.quote(str(fn))} {shlex.quote(str(fn_mp3))}')
                 os.unlink(fn)
    
     print('Done.')
+
+def is_youtube_url(url):
+    return url.startswith('https://www.youtube.com')
 
 def download_file(url, target):
     tmp_target = f'{target}.tmp'
@@ -66,7 +77,12 @@ def download_file(url, target):
     NUM_RETRIES = 3
     for i in range(NUM_RETRIES):
         print(f'Download attempt #{i+1}...')
-        status = os.system(f'wget {url} -O {shlex.quote(tmp_target)}')
+
+        if is_youtube_url(url):
+            status = download_youtube_video(url, tmp_target)
+        else:
+            status = os.system(f'wget {url} -O {shlex.quote(tmp_target)}')
+
         if status == 0:
             break
  
@@ -75,8 +91,29 @@ def download_file(url, target):
  
     if os.stat(tmp_target).st_size != 0:
         os.rename(tmp_target, target)
- 
-    
+
+def download_youtube_video(url, target):
+    # Options for youtube_dl: fetch URL and metadata without downloading the actual video
+    ydl_opts = {
+        'format': 'bestaudio/best',  # Get the best audio or video file
+        'quiet': True,  # Do not print messages to stdout
+        'simulate': True,  # Do not download the video files
+        'geturl': True,  # Print final URL to stdout
+    }
+
+    # Fetch the URL of the video/audio using youtube_dl
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info_dict = ydl.extract_info(url, download=False)
+        video_url = info_dict.get("url", None)
+
+    if video_url:
+        aria2c_command = ['aria2c', '-x', '16', '-s', '16', '-k', '1M', '-q', video_url, '-d', '/', '-o', target]
+        subprocess.run(aria2c_command)
+
+        return 0
+    else:
+        return -1
+
 def extract_download_link(links):
     download_link = None
 
@@ -94,6 +131,8 @@ def extract_download_link(links):
         if link.type == 'audio/mpeg':
             file_type = 'mp3'
         elif link.type == 'audio/x-m4a':
+            file_type = 'm4a'
+        elif link.type == 'video/mp4':
             file_type = 'm4a'
         else:
             print('Unknown download type detected. Exiting.')
