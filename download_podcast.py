@@ -81,7 +81,7 @@ def download_file(url, target):
         if is_youtube_url(url):
             status = download_youtube_video(url, tmp_target)
         else:
-            status = os.system(f'wget {url} -O {shlex.quote(tmp_target)}')
+            status = os.system(f'wget {shlex.quote(url)} -O {shlex.quote(tmp_target)}')
 
         if status == 0:
             break
