@@ -22,7 +22,7 @@ def create_transcripts_dataset(args):
     #cached_uuid = None
 
     for idx, file in enumerate(files):
-        print(idx)
+        print(f'{idx}/{len(files)}')
         transcript_desc = json.load(open(file))
 
         file = pathlib.Path(file) 
@@ -75,7 +75,7 @@ def create_audio_dataset(args):
     cached_uuid = None
 
     for idx, file in enumerate(files):
-        print(idx)
+        print(f'{idx}/{len(files)}')
 
         file = pathlib.Path(file) 
 
