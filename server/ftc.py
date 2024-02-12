@@ -32,6 +32,8 @@ in_dev = 'FTC_STAGING_MODE' in os.environ
 transcripts = None
 transcribed_total = 0.0
 
+LEADERBOARD_TOP_N = 50
+
 per_user_data = {}
 sorted_per_user_data = sortedcontainers.SortedList([], key=lambda member: -member['duration'])
 
@@ -263,6 +265,41 @@ def fetch_database():
         mimetype='application/gzip',
         headers={"Content-Disposition": "attachment;filename=data.json.gz"}
     )
+
+def obfuscate_email(email):
+    parts = email.split("@")
+    local = parts[0]
+    domain = parts[1]
+    obfuscated_local = local[0] + "*" * (len(local) - 2) + local[-1]
+    return f"{obfuscated_local}@{domain}"
+
+def format_duration(seconds):
+    """Converts duration from seconds to HH:MM:SS format."""
+    seconds = int(seconds)
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    seconds = seconds % 60
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+@app.route('/leaderboard')
+def leaderboard():
+    # Sort users based on duration
+    sorted_users = sorted(per_user_data.items(), key=lambda x: x[1]['duration'], reverse=True)
+    
+    # Obfuscate email, format duration, add ranking, and prepare display data
+    display_data = [{
+        "rank": idx + 1,
+        "segments": data["segments"],
+        "duration": format_duration(data["duration"]),
+        "email": obfuscate_email(email)
+    } for idx, (email, data) in enumerate(sorted_users)]
+
+    # Only show the top N
+    display_data = display_data[:LEADERBOARD_TOP_N]
+
+    # Render the template with the users data
+    return render_template('leaderboard.html', users=display_data)
+
 
 parser = argparse.ArgumentParser(description='Launch transcription server.')
 
