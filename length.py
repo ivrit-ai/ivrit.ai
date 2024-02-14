@@ -15,7 +15,6 @@ def calculate_total_length(args):
     total_length = 0
 
     for idx, f in enumerate(audio_files):
-        print(f'{idx}/{len(audio_files)}, {f}')
         if idx % 10000 == 0:
             print(f'Done processing {idx} files.')
 

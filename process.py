@@ -6,8 +6,8 @@ import os
 import pathlib
 import sys
 
-import pydub
 import torch
+import torchaudio
 
 import utils
 
@@ -25,7 +25,7 @@ def bulk_vad(args):
         NUM_PROCESSES = args.jobs
 
     model, torch_utils = torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad')
-    (get_speech_timestamps, _, read_audio, _, _) = torch_utils
+    (get_speech_timestamps, _, _, _, _) = torch_utils
 
     audio_files = utils.find_files(args.root_dir, args.skip_dir, ['.mp3', '.m4a'])
     groups = [audio_files[i::NUM_PROCESSES] for i in range(NUM_PROCESSES)] 
@@ -37,13 +37,13 @@ def bulk_vad(args):
         if pid:
             children_pids.append(pid)
         else:
-            bulk_vad_single_process(group_idx, group, get_speech_timestamps, read_audio, model)
+            bulk_vad_single_process(group_idx, group, get_speech_timestamps, model)
             sys.exit(0)
 
     for pid in children_pids:
         os.waitpid(pid, 0)
 
-def bulk_vad_single_process(group_idx, audio_files, get_speech_timestamps, read_audio, model):
+def bulk_vad_single_process(group_idx, audio_files, get_speech_timestamps, model):
     for idx, audio_file in enumerate(audio_files):
         print(f'Processing group {group_idx}, file #{idx}: {audio_file}')
 
@@ -61,7 +61,8 @@ def bulk_vad_single_process(group_idx, audio_files, get_speech_timestamps, read_
         except:
             pass 
 
-        data = read_audio(audio_file, sampling_rate=SAMPLING_RATE)
+        effects = [['channels', '1'], ['rate', str(SAMPLING_RATE)]]
+        data, _ = torchaudio.sox_effects.apply_effects_file(audio_file, effects=effects)
         speech_timestamps = get_speech_timestamps(data, model, sampling_rate=SAMPLING_RATE, min_speech_duration_ms=2000, max_speech_duration_s=29)
 
         canonical_splits = [(split['start'] / SAMPLING_RATE, split['end'] / SAMPLING_RATE) for split in speech_timestamps]
@@ -76,31 +77,23 @@ def bulk_vad_single_process(group_idx, audio_files, get_speech_timestamps, read_
         json.dump(desc, open(desc_filename, 'w'), indent=2)
 
 def store_splits(filename, splits, target_dir, source, episode):
-    format = pathlib.Path(filename).suffix.removeprefix('.')
-    audio = pydub.AudioSegment.from_file(filename, format)
-
-    mp3s = []
-
-
     escaped_filename = filename.replace('"', '\\"')
-    ffmpeg_cmd = f'ffmpeg -i "{escaped_filename}"'
+    ffmpeg_cmd_base = f'ffmpeg -i "{escaped_filename}"'
+    ffmpeg_cmd = ffmpeg_cmd_base
 
     elems = 0
  
     for idx, split in enumerate(splits):
         (start, end) = split
-        #start = int(start * 1000)
-        #end = int(end * 1000) 
 
         escaped_target_dir = target_dir.as_posix().replace('"', '\\"')
-        #ffmpeg_cmd += f' -vn -ar 44100 -ac 0 -b:a 192k -ss {start} -to {end} "{target_dir}/{idx}.mp3"'
         ffmpeg_cmd += f' -vn -c copy -ss {start} -to {end} "{escaped_target_dir}/{idx}.mp3"'
 
         elems += 1
 
         if elems == 200:
             os.system(ffmpeg_cmd)
-            ffmpeg_cmd = f'ffmpeg -i "{escaped_filename}"'
+            ffmpeg_cmd = ffmpeg_cmd_base 
             elems = 0
 
     if elems > 0:
