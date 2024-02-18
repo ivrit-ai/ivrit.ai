@@ -12,20 +12,18 @@ import torchaudio
 import utils
 
 # Using more than 1 thread appears to actually make VAD slower.
-# Using a single threads, and will run the script in parallel.
+# Using a single thread, and forking to run multiple processes.
 #
 # Yair, July 2023
 torch.set_num_threads(1)
 
 SAMPLING_RATE = 16000
-NUM_PROCESSES = 3
 
 def bulk_vad(args):
     if args.jobs:
         NUM_PROCESSES = args.jobs
 
     model, torch_utils = torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad')
-    (get_speech_timestamps, _, _, _, _) = torch_utils
 
     audio_files = utils.find_files(args.root_dir, args.skip_dir, ['.mp3', '.m4a'])
     groups = [audio_files[i::NUM_PROCESSES] for i in range(NUM_PROCESSES)] 
@@ -37,13 +35,15 @@ def bulk_vad(args):
         if pid:
             children_pids.append(pid)
         else:
-            bulk_vad_single_process(group_idx, group, get_speech_timestamps, model)
+            bulk_vad_single_process(group_idx, group, model, torch_utils)
             sys.exit(0)
 
     for pid in children_pids:
         os.waitpid(pid, 0)
 
-def bulk_vad_single_process(group_idx, audio_files, get_speech_timestamps, model):
+def bulk_vad_single_process(group_idx, audio_files, model, torch_utils):
+    (get_speech_timestamps, _, read_audio, _, _) = torch_utils
+
     for idx, audio_file in enumerate(audio_files):
         print(f'Processing group {group_idx}, file #{idx}: {audio_file}')
 
@@ -61,9 +61,9 @@ def bulk_vad_single_process(group_idx, audio_files, get_speech_timestamps, model
         except:
             pass 
 
-        effects = [['channels', '1'], ['rate', str(SAMPLING_RATE)]]
-        data, _ = torchaudio.sox_effects.apply_effects_file(audio_file, effects=effects)
-        speech_timestamps = get_speech_timestamps(data, model, sampling_rate=SAMPLING_RATE, min_speech_duration_ms=2000, max_speech_duration_s=29)
+        data = read_audio(audio_file, sampling_rate=SAMPLING_RATE)
+
+        speech_timestamps = get_speech_timestamps(data, model, sampling_rate=SAMPLING_RATE, min_speech_duration_ms=2000, max_speech_duration_s=29, min_silence_duration_ms=300)
 
         canonical_splits = [(split['start'] / SAMPLING_RATE, split['end'] / SAMPLING_RATE) for split in speech_timestamps]
 
@@ -112,7 +112,7 @@ if __name__ == '__main__':
                         help='Directories to skip. Can be passed multiple times.')
     parser.add_argument('--target-dir', type=str, required=True,
                         help='The directory where splitted audios will be stored.')
-    parser.add_argument('--jobs', type=int, required=False,
+    parser.add_argument('--jobs', type=int, required=False, default=3,
                         help='Allow N jobs at once.')
 
     # Parse the arguments
