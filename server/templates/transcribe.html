@@ -56,7 +56,7 @@
         </div>
         <audio id="custom-audio" controls>
         </audio>
-        <textarea id="readwrite-textbox" rows="4"></textarea>
+        <textarea id="readwrite-textbox" rows="4" autofocus></textarea>
 
         <div id="guidelines">
             <a href="https://www.ivrit.ai/he/%D7%AA%D7%9E%D7%9C%D7%95%D7%9C-%D7%A9%D7%90%D7%9C%D7%95%D7%AA-%D7%95%D7%AA%D7%A9%D7%95%D7%91%D7%95%D7%AA/#%D7%9B%D7%9C%D7%9C%D7%99-%D7%94%D7%AA%D7%9E%D7%9C%D7%95%D7%9C"
@@ -253,6 +253,13 @@
         readwriteTextbox.addEventListener('input', function () {
             // Update the readonly textbox as you type in the write box
             updateReadonlyTextbox();
+        });
+
+        // Event listner for ctrl+enter to submit
+        document.body.addEventListener('keydown', (event) => {
+            if(event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                submitButton.click()
+            }
         });
 
         submitButton.onclick = function () {
