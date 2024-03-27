@@ -29,6 +29,25 @@ import whisper.normalizers
 # 3. Engine: faster-whisper
 #    - Models: large-v2, large-v3, user-trained models
 
+
+def clean_text(text):
+    transformations = [
+        jiwer.RemovePunctuation(),
+        jiwer.RemoveEmptyStrings(),
+        jiwer.ToLowerCase(),
+        jiwer.RemoveWhiteSpace(replace_by_space=True),
+        jiwer.RemoveMultipleSpaces(),
+        jiwer.Strip(),
+        jiwer.ReduceToListOfListOfWords(word_delimiter=" ")
+    ]
+    
+    processed_text = text
+    for transformation in transformations:
+        processed_text = transformation(processed_text)
+    
+    return processed_text
+
+
 def initialize_model(engine, model_path):
     if engine == 'openai-whisper':
         model = whisper.load_model(model_path)
@@ -90,15 +109,14 @@ def transcribe_openai_whisper(entry):
 
     return model.transcribe('x.mp3', language='he', beam_size=5, best_of=5)['text']
 
-def evaluate_model(transcribe_fn, ds, text_column):
-    normalizer = whisper.normalizers.BasicTextNormalizer()
+def evaluate_model(transcribe_fn, ds, text_column,normalizer = clean_text): 
 
     ref_texts = []
     texts = []
 
     for i in range(len(ds)):
-        ref_text = normalizer(ds[i][text_column])
-        text = normalizer(transcribe_fn(ds[i]))
+        ref_text = clean_text(ds[i][text_column])
+        text = clean_text(transcribe_fn(ds[i]))
 
         ref_texts.append(ref_text)
         texts.append(text)
@@ -117,6 +135,7 @@ if __name__ == '__main__':
     parser.add_argument('--model', type=str, required=True, help='Model to use. Can be remote (e.g. openai/whisper-large-v3) or local (full path).')
     parser.add_argument('--dataset', type=str, required=True, help='Dataset to evaluate.')
     parser.add_argument('--text-column', type=str, required=True, help='Name of reference transcription column in dataset.')
+    
 
     # Parse the arguments
     args = parser.parse_args()
