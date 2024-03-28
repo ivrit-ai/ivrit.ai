@@ -12,51 +12,43 @@ import mutagen.mp3
 def create_transcripts_dataset(args):
     files = utils.find_files(args.root_dir, args.skip_dir, ['.json'])
 
-    episodes = []
-    sources = []
-    uuids = []
-    texts = []
-    attrs = []
+    ds = datasets.Dataset.from_dict({})
 
-    #cached_desc = None
-    #cached_uuid = None
 
-    for idx, file in enumerate(files):
-        print(f'{idx}/{len(files)}')
-        transcript_desc = json.load(open(file))
+    ds_list = []
 
-        file = pathlib.Path(file) 
+    for file_idx, file in enumerate(files):
+        print(f'{file_idx}/{len(files)}')
+        t_desc = json.load(open(file))
 
-        episode = file.parent.name
-        source = file.parent.parent.name
-        segment = int(file.stem)
-        uuid = f'{source}/{episode}/{segment}'
-        text = transcript_desc['text']
+        source = t_desc['source']
+        episode = t_desc['episode']
 
-        #if not cached_uuid == uuid:
-        #    cached_desc = json.load(open(file.parent / 'desc.json'))
-        #    cached_uuid = uuid
+        sources = []
+        episodes = []
+        uuids = []
+        texts = []
+        attrs = []
 
-        #start = cached_desc['splits'][segment][0]
-        #end = cached_desc['splits'][segment][1]
-        #duration = end - start
+        for seg_idx, seg in enumerate(t_desc['transcripts']): 
+            uuid = f'{source}/{episode}/{seg_idx}'
 
-        #attr = { 'segment' : segment, 'start' : start, 'end' : end, 'quality' : 1 }
-        attr = { 'segment' : segment, 'quality' : 1 }
+            seg_texts = []
+            for sub_segment in seg['segments']:
+                seg_texts.append(sub_segment['text'])
 
-        episodes.append(episode)
-        sources.append(source) 
-        uuids.append(uuid)
-        texts.append(text)
-        attrs.append(attr)
+            text = ' '.join(seg_texts)
 
-    ds = datasets.Dataset.from_dict({
-        'text' : texts,
-        'episode' : episodes,
-        'source' : sources,
-        'uuid' : uuids,
-        'attrs' : attrs
-    })
+            sources.append(source)
+            episodes.append(episode)
+            uuids.append(uuid)
+            texts.append(text)
+            attrs.append(seg)
+
+        temp_ds = datasets.Dataset.from_dict({'source' : sources, 'episode' : episodes, 'uuid' : uuids, 'text' : texts, 'attrs' : attrs})
+        ds_list.append(temp_ds)
+
+    ds = datasets.concatenate_datasets(ds_list) 
 
     return ds
 
@@ -138,8 +130,9 @@ def initialize_dataset(args):
     #
     # Yair, July 2023
 
-    #ds.push_to_hub(repo_id=args.dataset, token=args.hf_token)
-    ds.save_to_disk(args.dataset, num_shards=2000)
+    print('Uploading repo...')
+    ds.push_to_hub(repo_id=args.dataset, token=args.hf_token)
+    #ds.save_to_disk(args.dataset, num_shards=2000)
 
 if __name__ == '__main__':
     # Define an argument parser
