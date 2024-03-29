@@ -32,7 +32,8 @@ in_dev = 'FTC_STAGING_MODE' in os.environ
 transcripts = None
 transcribed_total = 0.0
 
-LEADERBOARD_TOP_N = 50
+LEADERBOARD_TOP_N = 100
+RETRANSCRIBE_RATE = 0.1
 
 per_user_data = {}
 sorted_per_user_data = sortedcontainers.SortedList([], key=lambda member: -member['duration'])
@@ -169,6 +170,13 @@ def get_google_oauth_token():
 
 @app.route('/api/getContent')
 def get_content():
+    # Once in a while, provide an already-transcribed segment
+    if random.random() < RETRANSCRIBE_RATE:
+        rtc = get_retranscribe_content()
+
+        if rtc:
+            return rtc
+
     global transcripts
 
     elem_index = random.choice(range(len(transcripts)))
@@ -186,7 +194,46 @@ def get_content():
         'duration' : mutagen.mp3.MP3(fn).info.length,
         'complexity' : 10 - round(10 * elem_index / len(transcripts), 1),
         'max_logprob' : max_logprob,
+        'attributes' : {}
     })
+
+def get_retranscribe_content():
+
+    elem = None
+
+    for i in range(3):
+        max_idx = db_models.Session().query(func.max(db_models.Transcript.id)).first()[0]
+        idx = random.randrange(0, max_idx + 1)
+        elem = db_models.Session().query(db_models.Transcript).filter(db_models.Transcript.id == idx).first()
+
+        if elem:
+            break
+
+    if not elem:
+        return None
+
+    source = elem.source
+    episode = elem.episode
+    idx = elem.segment
+    text = elem.data['payload']['text']
+    max_logprob = elem.data['payload']['max_logprob']
+
+    fn = f'{audio_dir}/{source}/{episode}/{idx}.mp3'
+
+    return jsonify({
+        'audioData': base64.b64encode(open(fn, 'rb').read()).decode('utf-8'),
+        'text': text,
+        'source': source,
+        'episode': episode,
+        'segment': idx,
+        'uuid' : f'{source}/{episode}/{idx}',
+        'duration' : mutagen.mp3.MP3(fn).info.length,
+        # Hard coded complexity for now; needs a list search in transcripts for accuracy
+        'complexity' : 5,
+        'max_logprob' : max_logprob,
+        'attributes' : { 'retranscribe' : True }
+    })
+
 
 @app.route('/api/getStatistics')
 def get_statistics():
@@ -324,4 +371,3 @@ initialize_per_user_data()
 if __name__ == '__main__':
     port = 5005 if in_dev else 4443
     app.run(host='0.0.0.0', port=port, ssl_context=('secrets/certchain.pem', 'secrets/private.key'))
-

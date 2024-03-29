@@ -128,6 +128,7 @@
         let segmentUUID = '';
         let segmentDuration = 0.0;
         let segmentMaxLogprob = 0.0;
+        let segmentAttributes = undefined;
 
         let currentRanking = undefined;
         let gapToLevelUp = undefined;
@@ -191,6 +192,7 @@
             segmentUUID = data.uuid;
             segmentDuration = data.duration;
             segmentMaxLogprob = data.max_logprob;
+            segmentAttributes = data.attributes;
 
             statsNumFullPlays = 0;
             statsNumPlayClicks = 0;
@@ -310,6 +312,7 @@
                 too_long: tooLongCheckbox.checked,
                 orig_text: originalSentence,
                 max_logprob: segmentMaxLogprob,
+                attributes: segmentAttributes,
                 stats: {
                     numFullPlays: statsNumFullPlays,
                     numPauseClicks: statsNumPauseClicks,
