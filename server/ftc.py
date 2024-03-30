@@ -1,5 +1,6 @@
 from flask import Flask, Response, redirect, render_template, request, url_for, session, jsonify
 from flask_oauthlib.client import OAuth
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import argparse
 import base64
@@ -24,6 +25,7 @@ import db_models
 from db_models import Session, Transcript
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1, x_prefix=1)
 app.secret_key = os.environ['FLASK_APP_SECRET']
 oauth = OAuth(app)
 

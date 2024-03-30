@@ -84,7 +84,7 @@ parser.add_argument('--channel_id', type=str, required=True, help='YouTube Chann
 parser.add_argument('--output_file', type=str, required=True, help='Output file name (e.g., feed.xml)')
 args = parser.parse_args()
 
-videos = get_all_videos(os.environ['YOUTUBE_API_KEY'], args.channel_id, 2009, 2024)
+videos = get_all_videos(os.environ['YOUTUBE_API_KEY'], args.channel_id, 2006, 2024)
 rss_feed = generate_rss_feed(args.channel_id, videos)
 
 # Write the feed to the specified output file
