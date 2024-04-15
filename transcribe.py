@@ -11,7 +11,7 @@ import aiohttp
 
 import utils
 
-NUM_ELEMENTS_PER_BATCH = 50
+NUM_ELEMENTS_PER_BATCH = 10
 
 async def fetch(session, url, data):
     headers = { 'Content-Type' : 'application/json' }
@@ -29,8 +29,6 @@ def transcribe(args):
         print(f'Transcribing episode {idx}/{len(descs)}, {_desc}.')
         desc = pathlib.Path(_desc)
         asyncio.run(transcribe_single(desc, args))
-
-url = 'http://0.0.0.0:4500/execute' 
 
 async def transcribe_single(desc, args):
     source = desc.parent.parent.name
@@ -71,7 +69,7 @@ async def transcribe_single(desc, args):
                     'token': '' 
                 }
 
-                tasks.append(fetch(session, url, payload))
+                tasks.append(fetch(session, args.server_url, payload))
 
             responses = await asyncio.gather(*tasks)
             for r in responses:
@@ -93,7 +91,9 @@ if __name__ == '__main__':
     parser.add_argument('--skip-dir', action='append', required=False, default=[],
                         help='Directories to skip. Can be passed multiple times.')
     parser.add_argument('--target-dir', type=str, required=True,
-                                    help='The directory where splitted audios will be stored.')
+                        help='The directory where splitted audios will be stored.')
+    parser.add_argument('--server-url', type=str, required=True,
+                        help='Transcription server URL.')
 
     # Parse the arguments
     args = parser.parse_args()

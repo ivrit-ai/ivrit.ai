@@ -82,9 +82,12 @@ def generate_rss_feed(channel_id, videos):
 parser = argparse.ArgumentParser(description='Generate an RSS feed from a YouTube channel.')
 parser.add_argument('--channel_id', type=str, required=True, help='YouTube Channel ID')
 parser.add_argument('--output_file', type=str, required=True, help='Output file name (e.g., feed.xml)')
+parser.add_argument('--from-year', type=int, required=True, help='Only collect videos from or after this year.')
+parser.add_argument('--to-year', type=int, required=True, help='Only collect videos from or before this year.')
+
 args = parser.parse_args()
 
-videos = get_all_videos(os.environ['YOUTUBE_API_KEY'], args.channel_id, 2006, 2024)
+videos = get_all_videos(os.environ['YOUTUBE_API_KEY'], args.channel_id, args.from_year, args.to_year)
 rss_feed = generate_rss_feed(args.channel_id, videos)
 
 # Write the feed to the specified output file
