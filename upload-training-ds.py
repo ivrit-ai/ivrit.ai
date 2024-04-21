@@ -15,9 +15,14 @@ def initialize_dataset(args, transcripts, split):
     print(f'Collecting {split} entries...')
     for t in transcripts:
         payload = t['data']['payload']
+
+        if payload['skipped']:
+            continue
+
         if 'attributes' in payload and \
            'retranscribe' in payload['attributes']:
             continue
+
 
         if t['source'] == 'IdanEretzYoutube':
             continue
