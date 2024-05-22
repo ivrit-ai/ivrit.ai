@@ -4,6 +4,7 @@ import argparse
 
 import librosa
 from transformers import WhisperProcessor, WhisperForConditionalGeneration
+from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 import faster_whisper
 
 import torch
@@ -29,17 +30,49 @@ import whisper.normalizers
 # 3. Engine: faster-whisper
 #    - Models: large-v2, large-v3, user-trained models
 
-def initialize_model(model_path, tuned_model_path):
-    model = whisper.load_model(model_path)
+def initialize_model(engine, model_path, tuned_model_path):
+    if engine == 'openai-whisper':
+        model = whisper.load_model(model_path)
 
-    if tuned_model_path:
-        tuned_model = WhisperForConditionalGeneration.from_pretrained(tuned_model_path)
-        model = copy_hf_model_weights_to_openai_model_weights(tuned_model, model)
+        def transcribe(filename):
+            return transcribe_openai_whisper(model, filename)
 
-    def transcribe(filename):
-        return transcribe_openai_whisper(model, filename)
+        return transcribe
 
-    return transcribe
+    if engine == 'openai-whisper-tuned':
+        model = whisper.load_model(model_path)
+
+        if tuned_model_path:
+            tuned_model = WhisperForConditionalGeneration.from_pretrained(tuned_model_path)
+            model = copy_hf_model_weights_to_openai_model_weights(tuned_model, model)
+
+        def transcribe(filename):
+            return transcribe_openai_whisper(model, filename)
+
+        return transcribe
+
+    if engine == 'transformers':
+        device='cuda:0'
+        torch_dtype = torch.float16
+
+        model = WhisperForConditionalGeneration.from_pretrained(model_path, torch_dtype=torch_dtype, use_safetensors=True)
+        model.to(device)
+        processor = WhisperProcessor.from_pretrained(model_path)
+
+        pipe = pipeline("automatic-speech-recognition",
+                        model=model,
+                        tokenizer=processor.tokenizer,
+                        feature_extractor=processor.feature_extractor,
+                        chunk_length_s=10,
+                        stride_length_s=(4, 2),
+                        batch_size=1,
+                        torch_dtype=torch_dtype,
+                        device=device)
+
+        def transcribe(filename):
+            return pipe(filename, generate_kwargs={"language": "hebrew"})["text"]
+
+        return transcribe 
 
 def copy_hf_model_weights_to_openai_model_weights(tuned_model, model):
     dic_parameter_mapping = dict()
@@ -118,6 +151,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Create a dataset and upload to Huggingface.')
 
     # Add the arguments
+    parser.add_argument('--engine', type=str, required=True, choices={'openai-whisper', 'openai-whisper-tuned', 'transformers', 'faster-whisper'}, help='Engine to use.')
     parser.add_argument('--model', type=str, required=True, help='Model to use, (large-v2, large-v3 etc).')
     parser.add_argument('--tuned-model', type=str, required=False, help='Huggingface-style tuned model. Can be hosted or local.')
     parser.add_argument('--file', type=str, required=True, help='File to transcribe.')
@@ -126,8 +160,11 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     print(f'Loading model {args.model}, tuned model is {args.tuned_model}...')
-    transcribe_fn = initialize_model(args.model, args.tuned_model)
+    transcribe_fn = initialize_model(args.engine, args.model, args.tuned_model)
 
     print(f'Transcribing {args.file}...')
-    transcribe_fn(args.file)
+    text = transcribe_fn(args.file)
+    print(text)
+    open('x.txt', 'w').write(text)
+
 
