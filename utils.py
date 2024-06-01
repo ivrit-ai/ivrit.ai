@@ -12,7 +12,7 @@ def find_files(root_directories, skip, extensions):
                 # Remove the directories to skip from the subdirectories list
                 subdirs[:] = [d for d in subdirs if d not in skip]
 
-            # Print the mp3 file names
+            # Select all relevant files
             for ext in extensions:
                 for fname in glob.glob(f'{dir_name}/*{ext}'):
                     ret_files.append(fname)
