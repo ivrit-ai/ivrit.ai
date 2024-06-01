@@ -20,8 +20,10 @@ from transformers import Seq2SeqTrainer
 from dataclasses import dataclass
 from typing import Any, Dict, List, Union
 
+from peft import prepare_model_for_kbit_training, LoraConfig, PeftModel, LoraModel, LoraConfig, get_peft_model
+
 #eval_dataset = load_dataset("ivrit-ai/audio-labeled", token='')
-dataset = load_from_disk('/home/ubuntu/data/ivrit-13-20240601')
+dataset = load_from_disk('/home/data/ivrit-13-20240601')
 
 processor = WhisperProcessor.from_pretrained("openai/whisper-large-v2", language="hebrew", task="transcribe")
 
@@ -135,10 +137,24 @@ def compute_metrics(pred):
 
 
 model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-large-v2")
+
+USE_PEFT = True
+
+if USE_PEFT:
+    model = prepare_model_for_kbit_training(model)
+
+    def make_inputs_require_grad(module, input, output):
+        output.requires_grad_(True)
+
+    model.model.encoder.conv1.register_forward_hook(make_inputs_require_grad)
+
+    config = LoraConfig(r=32, lora_alpha=64, target_modules=["q_proj", "v_proj"], lora_dropout=0.05, bias="none")
+
+    model = get_peft_model(model, config)
+    model.print_trainable_parameters()
+
 model.config.use_cache = False
 model.generate = partial(model.generate, language="hebrew", task="transcribe", use_cache=True)
-
-
 
 
 output_dir_trainer = 'whisper-large-yair'
