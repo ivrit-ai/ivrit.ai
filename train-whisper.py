@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Union
 
 from peft import prepare_model_for_kbit_training, LoraConfig, PeftModel, LoraModel, LoraConfig, get_peft_model
 
-#eval_dataset = load_dataset("ivrit-ai/audio-labeled", token='')
+eval_dataset = load_dataset("ivrit-ai/audio-labeled", token='').select(10)
 dataset = load_from_disk('/home/data/ivrit-13-20240601')
 
 processor = WhisperProcessor.from_pretrained("openai/whisper-large-v2", language="hebrew", task="transcribe")
@@ -58,10 +58,10 @@ def prepare_dataset_text(example):
 
 
 train_set = dataset 
-#eval_set = eval_dataset['test'] 
+eval_set = eval_dataset['test'] 
 
 train_set = train_set.map(prepare_dataset_sentence, remove_columns=train_set.column_names, num_proc=1)
-#eval_set = eval_set.map(prepare_dataset_text, remove_columns=eval_set.column_names, num_proc=1)
+eval_set = eval_set.map(prepare_dataset_text, remove_columns=eval_set.column_names, num_proc=1)
 
 @dataclass
 class DataCollatorSpeechSeq2SeqWithPadding:
@@ -138,7 +138,7 @@ def compute_metrics(pred):
 
 model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-large-v2")
 
-USE_PEFT = True
+USE_PEFT = False 
 
 if USE_PEFT:
     model = prepare_model_for_kbit_training(model)
