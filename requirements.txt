@@ -19,3 +19,4 @@ python-dotenv
 jiwer
 pandas
 peft
+evaluate

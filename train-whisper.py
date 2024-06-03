@@ -5,7 +5,8 @@ import evaluate
 import numpy as np
 import pandas as pd
 import torch
-
+import torchaudio
+from torchaudio.transforms import Resample
 
 from datasets import Audio, load_dataset, load_from_disk
 from functools import partial
@@ -22,33 +23,44 @@ from typing import Any, Dict, List, Union
 
 from peft import prepare_model_for_kbit_training, LoraConfig, PeftModel, LoraModel, LoraConfig, get_peft_model
 
-eval_dataset = load_dataset("ivrit-ai/audio-labeled", token='').select(10)
-dataset = load_from_disk('/home/data/ivrit-13-20240601')
+eval_dataset = load_dataset("ivrit-ai/audio-labeled", token='')
+dataset = load_dataset('', token='')
 
 processor = WhisperProcessor.from_pretrained("openai/whisper-large-v2", language="hebrew", task="transcribe")
 
 sampling_rate = processor.feature_extractor.sampling_rate
 dataset = dataset.cast_column("audio", Audio(sampling_rate=sampling_rate))
 
-
 def prepare_dataset(example, text_column_name):
-
     try:
         audio = example["audio"]
+        original_sampling_rate = audio["sampling_rate"]
+        target_sampling_rate = 16000
+
+        # If the original sampling rate is not the target, resample the audio
+        if original_sampling_rate != target_sampling_rate:
+            resampler = Resample(orig_freq=original_sampling_rate, new_freq=target_sampling_rate)
+            audio_array = torch.tensor(audio["array"]).float()
+            resampled_audio_array = resampler(audio_array).numpy()
+        else:
+            resampled_audio_array = audio["array"]
 
         example = processor(
-            audio=audio["array"],
-            sampling_rate=audio["sampling_rate"],
+            audio=resampled_audio_array,
+            sampling_rate=target_sampling_rate,
             text=example[text_column_name],
         )
 
         # compute input length of audio sample in seconds
-        example["input_length"] = len(audio["array"]) / audio["sampling_rate"]
+        example["input_length"] = len(resampled_audio_array) / target_sampling_rate
 
         return example
     except Exception as e:
         print('Exception')
+        print(e)
         return None
+
+
 
 def prepare_dataset_sentence(example):
     return prepare_dataset(example, 'sentence')
@@ -57,8 +69,8 @@ def prepare_dataset_text(example):
     return prepare_dataset(example, 'text')
 
 
-train_set = dataset 
-eval_set = eval_dataset['test'] 
+train_set = dataset['train']
+eval_set = eval_dataset['test'].select(range(16))
 
 train_set = train_set.map(prepare_dataset_sentence, remove_columns=train_set.column_names, num_proc=1)
 eval_set = eval_set.map(prepare_dataset_text, remove_columns=eval_set.column_names, num_proc=1)
@@ -163,8 +175,8 @@ output_dir_trainer = 'whisper-large-yair'
 
 training_args = Seq2SeqTrainingArguments(
     output_dir = output_dir_trainer,
-    per_device_train_batch_size=16,
-    gradient_accumulation_steps=1,  # increase by 2x for every 2x decrease in batch size
+    per_device_train_batch_size=8,
+    gradient_accumulation_steps=2,  # increase by 2x for every 2x decrease in batch size
     learning_rate=1e-5,
     lr_scheduler_type="constant_with_warmup",
     warmup_ratio=0.1,
@@ -196,7 +208,7 @@ trainer = Seq2SeqTrainer(
     args=training_args,
     model=model,
     train_dataset=train_set,
-    #eval_dataset=eval_set,
+    eval_dataset=eval_set,
     data_collator=data_collator,
     compute_metrics=compute_metrics,
     tokenizer=processor,
@@ -207,9 +219,9 @@ trainer.train()
 
 
 kwargs = {
-    "dataset_tags": "ivrit-ai/ivrit-13-20240601",
+    "dataset_tags": "ivrit-ai/ivrit-13-20240603",
     "finetuned_from": "openai/whisper-large-v2",
     "tasks": "automatic-speech-recognition",
-    "model_name": "ivrit-ai/large-v2-ivrit-13-20240601",
+    "model_name": "ivrit-ai/large-v2-ivrit-13-20240603",
 }
 
