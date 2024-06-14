@@ -39,17 +39,15 @@ def download_podcast(feed, target_dir):
 
         formatted_date = date_obj.strftime('%Y.%m.%d')
 
-        fn = f'{formatted_date} {title}'
-        fn = re.sub(r'[\\/*?:"<>|]', '', fn)
-        fn = trim_filename(fn)
-        fn = target_dir / f'{fn}.{file_type}'
-    
-        fn_mp3 = f'{formatted_date} {title}'
-        fn_mp3 = re.sub(r'[\\/*?:"<>|]', '', fn_mp3)
-        fn_mp3 = trim_filename(fn_mp3)
-        fn_mp3 = target_dir / f'{fn_mp3}.mp3'
+        raw_fn = f'{formatted_date} {title}'
+        raw_fn = re.sub(r'[\\/*?:"<>|]', '', raw_fn)
+        raw_fn = trim_filename(raw_fn)
 
-        if not os.path.exists(fn) and not os.path.exists(fn_mp3):
+        fn = target_dir / f'{raw_fn}.{file_type}'
+        fn_mp3 = target_dir / f'{raw_fn}.mp3'
+        fn_done = target_dir / f'{raw_fn}.done'
+
+        if not fn_done.exists():
             print(f'Downloading {fn}...')
 
             try:
@@ -63,6 +61,8 @@ def download_podcast(feed, target_dir):
                 # pydub fails conversion for some cases, while ffmpeg plays nice for a wider range of inputs.
                 os.system(f'ffmpeg -i {shlex.quote(str(fn))} {shlex.quote(str(fn_mp3))}')
                 os.unlink(fn)
+
+            fn_done.touch()
    
     print('Done.')
 
@@ -70,8 +70,6 @@ def is_youtube_url(url):
     return url.startswith('https://www.youtube.com')
 
 def download_file(url, target):
-    tmp_target = f'{target}.tmp'
-
     status = 0
 
     NUM_RETRIES = 3
@@ -79,36 +77,62 @@ def download_file(url, target):
         print(f'Download attempt #{i+1}...')
 
         if is_youtube_url(url):
-            status = download_youtube_video(url, tmp_target)
+            status = download_youtube_video(url, target)
         else:
-            status = os.system(f'wget {shlex.quote(url)} -O {shlex.quote(tmp_target)}')
+            status = os.system(f'wget {shlex.quote(url)} -O {shlex.quote(str(target))}')
+
+        if not target.exists():
+            continue
 
         if status == 0:
             break
  
     if status != 0:
         sys.exit(-1)
- 
-    if os.stat(tmp_target).st_size != 0:
-        os.rename(tmp_target, target)
+
+    if target.exists() and target.stat().st_size == 0:
+        target.unlink() 
 
 def download_youtube_video(url, target):
     # Options for youtube_dl: fetch URL and metadata without downloading the actual video
     ydl_opts = {
-        'format': 'bestaudio/best',  # Get the best audio or video file
-        'quiet': True,  # Do not print messages to stdout
-        'simulate': True,  # Do not download the video files
-        'geturl': True,  # Print final URL to stdout
+        'format': 'bestaudio/best',  	# Get the best audio or video file
+        'quiet': True,  		# Do not print messages to stdout
+        'simulate': True,  		# Do not download the video files
+        'geturl': True,  		# Print final URL to stdout
+        'listsubs' : True, 		# Get list of subtitles
     }
 
     # Fetch the URL of the video/audio using youtube_dl
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info_dict = ydl.extract_info(url, download=False)
-        video_url = info_dict.get("url", None)
+        video_url = info_dict.get('url', None)
+
+        subtitles = info_dict.get('subtitles', {}).get('iw', {})
+
+        pd = pathlib.Path(target)
+        pd.parent.mkdir(parents=True, exist_ok=True)
+
+        if not subtitles == {}:
+            print(f'Has hebrew subtitles; duration={info_dict["duration"]}')
+            vtt_url = None
+
+            for st in info_dict['subtitles']['iw']:
+                if st['ext'] != 'vtt':
+                    continue
+
+                vtt_url = st['url']
+                vtt_fn = target.parent / f'{target.stem}.vtt'
+
+            if not vtt_url:
+                print(f'No VTT found. Subtitles: {subtitles}')
+                sys.exit(-1)
+
+            os.system(f'''wget '{vtt_url}' -O {shlex.quote(str(vtt_fn))}''')
 
     if video_url:
-        aria2c_command = ['aria2c', '-x', '16', '-s', '16', '-k', '1M', '-q', video_url, '-d', '/', '-o', target]
-        subprocess.run(aria2c_command)
+        cmd = f'''aria2c -x 16 -s 16 -k 1M -q '{video_url}' -d / -o {shlex.quote(str(target))}'''
+        os.system(cmd)
 
         return 0
     else:
