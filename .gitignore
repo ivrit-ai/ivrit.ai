@@ -15,3 +15,6 @@ downloads
 
 # Temporary Scrips
 tmp_*.py
+
+# Local Configiuration files
+config/

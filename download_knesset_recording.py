@@ -16,6 +16,7 @@ from webvtt import WebVTT, Caption
 RECORDING_TYPES = ["plenum"]
 
 base_kenesset_url = "https://online.knesset.gov.il"
+base_knesset_app_url = f"{base_kenesset_url}/app/"
 plenum_player_site_base_url = f"{base_kenesset_url}/app/#/player/peplayer.aspx"
 knesset_protocol_ajax_api_base_url = f"{base_kenesset_url}/api/Protocol"
 knesset_protocol_video_path_api_url = (
@@ -31,6 +32,7 @@ knesset_protocol_page_content_api_url = (
     f"{knesset_protocol_ajax_api_base_url}/GetProtocolBulk"
 )
 
+
 cached_video_source_url_file_name = "cache.video.url"
 cached_transcript_html_file_name = "cache.transcript.html"
 cached_html_ts_map_file_name = "cache.htmltsmap.npy"
@@ -41,19 +43,59 @@ output_transcript_vtt_file_name = "transcript.vtt"
 output_video_file_name = "video.mp4"
 output_audio_file_name = "audio.mp3"
 
-# Cookies that require JS "bootsrapping" to be able to call the individual APIs:
-# rbzid
-# rbzsessionid
-# TODO: Headers must come from a real browser session - currently a manual process.
-# This needs fixing
-knesset_http_headers = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
-    "Cookie": "GCLB=COSokJ6TppDBrAEQAwl; rbzid=Of9KL4rjENFl93E4cuSdxlX1XuqMsxqajC5/4Gf9tg2IWiN3Ec1UkevAbiZHNReJmy0wWJCp+SI55bcKIUiHXIiWQhSzUXWmigmFrTxv/r0EUOIJG249LpB8yZfLR7LHzq2r3FhybmIm+5RCt97VLxwo1HFN+3or62rXHDpvGsnw2D3EwugHxD8MS2AWyyzgT2PFoJHIwJw4IASjMPAHn7qt7QB2tvfRmn5Z628aMyE=; rbzsessionid=6c75f6b2fcdcc8bc030d82a3fc9a8b6d; _ga=GA1.3.87777051.1720953347; _gid=GA1.3.936504290.1720953347; _ga_54WRW4HGGK=GS1.1.1720605037.3.1.1720606689.11.0.0; GCLB=CPGTtarC99ST_AEQAw; _ga_54WRW4HGGK=GS1.3.1720953347.1.0.1720953347.60.0.0",
-    "Referer": "https://online.knesset.gov.il/app",
-    "Host": "online.knesset.gov.il",
-}
+HOW_TO_GET_HTTP_HEADERS = """
+To Get the HTTP Headers needed to run this script perform the following steps manually:
+=======================================================================================
+- Open a new browser window - in private mode / Incognito (Firefox, Chrome would work)
+- Open dev tools / Network tab
+- Navigate to the player site at: https://online.knesset.gov.il/app
+- Wait until the site loads
+- Look for request to https://online.knesset.gov.il/app which resulted in a **301 redirect** (there are multiple requests to this URL)
+- Click on the request and "Copy Request Headers"
+- Paste within the headers input file, each header should occupy a separate line if done correctly
+- Sorry.
+"""
 
-text_idx_extractor_pattern = re.compile("txt_(\d+)")
+extract_header_user_agent = re.compile(r"User-Agent: (.*)")
+extract_header_cookie = re.compile(r"Cookie: (.*)")
+
+
+def load_http_headers(args) -> dict:
+    if args.http_headers_file:
+        with open(args.http_headers_file, "r") as f:
+            http_headers_manual_data = f.read()
+
+            return {
+                "User-Agent": extract_header_user_agent.search(
+                    http_headers_manual_data
+                ).group(1),
+                "Cookie": extract_header_cookie.search(http_headers_manual_data).group(
+                    1
+                ),
+                "Referer": "https://online.knesset.gov.il/app",
+                "Host": "online.knesset.gov.il",
+            }
+
+
+def check_http_access(knesset_http_headers: dict):
+    try:
+        print("Requesting main site page...")
+        print("Using HTTP headers:")
+        print(json.dumps(knesset_http_headers, indent=2))
+        response = requests.get(base_knesset_app_url, headers=knesset_http_headers)
+        if response.status_code == 200:
+            print("200 response recieved")
+            # if the HTML content contains a <title> tag
+            if 0 < len(response.content) and response.content.find(b"<title>") > 0:
+                print("Detected <title>")
+                return True
+            else:
+                print("Unable to detect <title>.")
+        else:
+            print("Status code is not 200...")
+            return False
+    except Exception as e:
+        return False
 
 
 class TimeMarker:
@@ -64,6 +106,9 @@ class TimeMarker:
     # Support serialziing as string
     def __repr__(self) -> str:
         return f"[[{'S' if self.start else 'E'}{self.seconds:g}]]"
+
+
+text_idx_extractor_pattern = re.compile("txt_(\d+)")
 
 
 def extract_transcript_parts_from_elements(root_element: PageElement, context: dict):
@@ -272,7 +317,9 @@ def cleanup_html_time_map_arr(time_map_arr: np.ndarray) -> np.ndarray:
 
 
 def get_video_resource_url(
-    plenum_target_folder: pathlib.Path, plenum_recording_id: str
+    knesset_http_headers: dict,
+    plenum_target_folder: pathlib.Path,
+    plenum_recording_id: str,
 ) -> str:
     # If the video file url is cached - use that
     if pathlib.Path(plenum_target_folder / cached_video_source_url_file_name).exists():
@@ -294,7 +341,11 @@ def get_video_resource_url(
     return video_resource_url
 
 
-def get_html_ts_map(plenum_target_folder: pathlib.Path, plenum_recording_id: str):
+def get_html_ts_map(
+    knesset_http_headers: dict,
+    plenum_target_folder: pathlib.Path,
+    plenum_recording_id: str,
+):
     # check if a cache file of the HTML TS map exists
     if pathlib.Path(plenum_target_folder / cached_html_ts_map_file_name).exists():
         print("Reusing cached HTML->Timestamp mapping...")
@@ -325,7 +376,11 @@ def get_html_ts_map(plenum_target_folder: pathlib.Path, plenum_recording_id: str
     return html_ts_map_js_array
 
 
-def get_html_transcript(plenum_target_folder: pathlib.Path, plenum_recording_id: str):
+def get_html_transcript(
+    knesset_http_headers: dict,
+    plenum_target_folder: pathlib.Path,
+    plenum_recording_id: str,
+):
     # If a temp HTML traanscript file exists, use that
     if pathlib.Path(plenum_target_folder / cached_transcript_html_file_name).exists():
         print("Reusing cached transcript HTML file from previouse run")
@@ -419,20 +474,29 @@ def download_video_audio_recording(
 
 
 def download_plenum(
-    id: str, target_dir: pathlib.Path, skip_download_video_file: bool = False
+    knesset_http_headers: dict,
+    id: str,
+    target_dir: pathlib.Path,
+    skip_download_video_file: bool = False,
 ):
     plenum_target_folder = target_dir / "plenum" / id
 
     if not pathlib.Path(plenum_target_folder).exists():
         plenum_target_folder.mkdir(parents=True, exist_ok=True)
 
-    video_resource_url = get_video_resource_url(plenum_target_folder, id)
+    video_resource_url = get_video_resource_url(
+        knesset_http_headers, plenum_target_folder, id
+    )
 
     print(f"Plenum video resource url: {video_resource_url} (Not downloading yet..)")
 
-    html_ts_map_js_array = get_html_ts_map(plenum_target_folder, id)
+    html_ts_map_js_array = get_html_ts_map(
+        knesset_http_headers, plenum_target_folder, id
+    )
 
-    html_transcript = get_html_transcript(plenum_target_folder, id)
+    html_transcript = get_html_transcript(
+        knesset_http_headers, plenum_target_folder, id
+    )
 
     print("Parsing HTML transcript...")
     transcript_text, transcript_time_index_df = parse_plenum_transcript(
@@ -464,11 +528,13 @@ def download(args):
     target_dir = pathlib.Path(args.target_dir)
 
     if args.type == "plenum":
-        skip_download_video_file = args.skip_video_download
-        print(skip_download_video_file)
+        knesset_http_headers = load_http_headers(args)
         for id in args.ids:
             download_plenum(
-                id, target_dir, skip_download_video_file=skip_download_video_file
+                knesset_http_headers,
+                id,
+                target_dir,
+                skip_download_video_file=args.skip_video_download,
             )
     else:
         raise Exception(f"Unknown Knesset recording type: {args.type}")
@@ -477,7 +543,8 @@ def download(args):
 if __name__ == "__main__":
     # Define an argument parser
     parser = argparse.ArgumentParser(
-        description="""Download Knesset recordings and extract existing transcripts."""
+        description="""Download Knesset recordings and extract existing transcripts.""",
+        formatter_class=argparse.RawTextHelpFormatter,
     )
 
     # Add the arguments
@@ -493,13 +560,19 @@ if __name__ == "__main__":
         "--ids",
         action="append",
         type=str,
-        required=True,
+        required=False,  # Manually checked later
         help="Ids of the recording to download, for the type requested.",
+    )
+    parser.add_argument(
+        "--http-headers-file",
+        type=str,
+        required=True,
+        help=f"The http headers to use for Knessets access.\n{HOW_TO_GET_HTTP_HEADERS}",
     )
     parser.add_argument(
         "--target-dir",
         type=str,
-        required=True,
+        required=False,  # Manually checked later
         help="The directory where episodes will be stored.",
     )
     parser.add_argument(
@@ -508,8 +581,29 @@ if __name__ == "__main__":
         required=False,
         help="Skip downloading the video file.",
     )
+    parser.add_argument(
+        "--only-check-http-access",
+        action="store_true",
+        required=False,
+        help="Check if a valid HTTP access exists - report and abort without any processing",
+    )
 
     # Parse the arguments
     args = parser.parse_args()
+
+    if not args.only_check_http_access and (
+        0 == len(args.ids or []) or not args.target_dir or not args.http_headers_file
+    ):
+        parser.error("--ids and --target-dir and --http-headers-file are required.")
+
+    if args.only_check_http_access:
+        print("Checking HTTP access...")
+        http_headers = load_http_headers(args)
+        if check_http_access(http_headers):
+            print("OK - HTTP access is working as expected.")
+            exit(0)
+        else:
+            print("Not OK - HTTP access is not working as expected.")
+            exit(1)
 
     download(args)
