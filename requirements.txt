@@ -20,3 +20,9 @@ jiwer
 pandas
 peft
 evaluate
+yt_dlp
+beautifulsoup4
+openai
+webvtt
+scipy
+tqdm
