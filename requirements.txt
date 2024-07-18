@@ -26,3 +26,4 @@ openai
 webvtt
 scipy
 tqdm
+pydantic

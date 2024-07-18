@@ -40,6 +40,8 @@ def bulk_vad(args):
         "min_speech_duration_ms": args.min_speech_duration_ms,
         "max_speech_duration_s": args.max_speech_duration_s,
         "min_silence_duration_ms": args.min_silence_duration_ms,
+        "speech_pad_ms": args.speech_pad_ms,
+        "speech_threshold": args.speech_threshold,
     }
 
     with Pool(processes=len(processing_groups)) as pool:
@@ -141,6 +143,8 @@ def bulk_vad_single_process(config, group_idx, audio_files, model, torch_utils):
                 min_speech_duration_ms=config["min_speech_duration_ms"],
                 max_speech_duration_s=config["max_speech_duration_s"],
                 min_silence_duration_ms=config["min_silence_duration_ms"],
+                speech_pad_ms=config["speech_pad_ms"],
+                threshold=config["speech_threshold"],
                 return_seconds=True,
             )
 
@@ -298,6 +302,20 @@ if __name__ == "__main__":
         required=False,
         default=300,
         help="VAD param: min_silence_duration_ms",
+    )
+    parser.add_argument(
+        "--speech_pad_ms",
+        type=int,
+        required=False,
+        default=30,
+        help="VAD param: speech_pad_ms",
+    )
+    parser.add_argument(
+        "--speech_threshold",
+        type=float,
+        required=False,
+        default=0.5,
+        help="VAD param: threshold (for speech detection)",
     )
 
     # Parse the arguments

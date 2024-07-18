@@ -220,6 +220,9 @@ def transcribe(args):
     # Iterate over each root directory
     descs = utils.find_files(args.root_dir, args.skip_dir, [".json"])
 
+    if len(descs) == 0:
+        print("Found no audio split folders to process (Looking for JSON files).")
+
     for idx, _desc in enumerate(descs):
         print(f"Transcribing episode {idx}/{len(descs)}, {_desc}.")
         desc = pathlib.Path(_desc)
