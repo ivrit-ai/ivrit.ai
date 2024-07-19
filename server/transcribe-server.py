@@ -1,3 +1,4 @@
+import argparse
 import base64
 from enum import Enum
 import io
@@ -154,16 +155,63 @@ def process_task(task_type, data):
 
 
 if __name__ == "__main__":
+    # Configure args
+    parser = argparse.ArgumentParser(
+        description="Whisper transcription server",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="large-v2",
+        help="""Size of the model to use (tiny, tiny.en, base, base.en,
+small, small.en, distil-small.en, medium, medium.en, distil-medium.en, large-v1,
+large-v2, large-v3, large, distil-large-v2 or distil-large-v3), a path to a
+converted model directory, or a CTranslate2-converted Whisper model ID from the HF Hub.
+When a size or a model ID is configured, the converted model is downloaded
+from the Hugging Face Hub.""",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cuda",
+        help="Device to use for inference (default: cuda)",
+        choices=["cuda", "cpu", "auto"],
+    )
+    parser.add_argument(
+        "--compute-type",
+        type=str,
+        default="int8",
+        help="Type to use for computation. See https://opennmt.net/CTranslate2/quantization.html",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=4500,
+        help="Port to listen on (default: 4500)",
+    )
+    parser.add_argument(
+        "--max-concurrent-tasks",
+        type=int,
+        default=2,
+        help="Maximum number of concurrent tasks (default: 1)",
+    )
+    args = parser.parse_args()
+
     print(
-        f"Loading whisper models... pid={os.getpid()} tid={threading.current_thread().native_id}"
+        f"Loading whisper model: {args.model}. pid={os.getpid()} tid={threading.current_thread().native_id}"
     )
 
     whisper_models = []
-    for i in range(MAX_CONCURRENT_TASKS):
+    for i in range(args.max_concurrent_tasks):
         whisper_models.append(
             whisper_models.append(
-                WhisperModel("large-v2", device="cuda", compute_type="int8")
+                WhisperModel(
+                    args.model,
+                    device=args.device,
+                    compute_type=args.compute_type,
+                )
             )
         )
 
-    app.run(host="0.0.0.0", port=4500)
+    app.run(host="0.0.0.0", port=args.port)
