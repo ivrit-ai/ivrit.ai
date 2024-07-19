@@ -39,9 +39,7 @@ cached_html_ts_map_file_name = "cache.htmltsmap.npy"
 
 output_transcript_text_file_name = "transcript.txt"
 output_transcript_time_index_file_name = "transcript.timeindex.csv"
-output_transcript_vtt_file_name = "transcript.vtt"
 output_video_file_name = "video.mp4"
-output_audio_file_name = "audio.mp3"
 
 HOW_TO_GET_HTTP_HEADERS = """
 To Get the HTTP Headers needed to run this script perform the following steps manually:
@@ -135,25 +133,22 @@ def extract_transcript_parts_from_elements(root_element: PageElement, context: d
                 text_ts_idx = int(text_idx_matches[0])
 
             if text_ts_idx is not None:
-                prev_text_ts = context["current_text_ts"]
+                prev_text_ts: pd.Timedelta = context["current_text_ts"]
                 time_at_idx: pd.Timedelta = pd.to_timedelta(
                     context["time_pointers_arr_np"][text_ts_idx], "s"
                 )
 
-                if context["current_text_ts"] is not None:
-                    if context["current_text_ts"] < time_at_idx:
-                        context["current_text_ts"] = time_at_idx
-                        extracted_list = [
-                            TimeMarker(True, time_at_idx.total_seconds()),
-                            *extracted_list,
-                        ]
-                else:
+                if prev_text_ts is None or context["current_text_ts"] < time_at_idx:
                     context["current_text_ts"] = time_at_idx
+                    extracted_list = [
+                        TimeMarker(True, time_at_idx.total_seconds()),
+                        *extracted_list,
+                    ]
 
                 # if we moved to a new TS - add an end marker before the begin marker
                 if (
                     prev_text_ts is not None
-                    and prev_text_ts.seconds > 0
+                    and prev_text_ts.total_seconds() > 0
                     and prev_text_ts < time_at_idx
                 ):
                     extracted_list = [
@@ -318,12 +313,16 @@ def cleanup_html_time_map_arr(time_map_arr: np.ndarray) -> np.ndarray:
 
 def get_video_resource_url(
     knesset_http_headers: dict,
-    plenum_target_folder: pathlib.Path,
+    plenum_id_target_folder: pathlib.Path,
     plenum_recording_id: str,
 ) -> str:
     # If the video file url is cached - use that
-    if pathlib.Path(plenum_target_folder / cached_video_source_url_file_name).exists():
-        with open(plenum_target_folder / cached_video_source_url_file_name, "r") as f:
+    if pathlib.Path(
+        plenum_id_target_folder / cached_video_source_url_file_name
+    ).exists():
+        with open(
+            plenum_id_target_folder / cached_video_source_url_file_name, "r"
+        ) as f:
             video_resource_url = f.read()
     else:
         # Get the video path
@@ -335,7 +334,9 @@ def get_video_resource_url(
         video_resource_url = json.loads(response.text)
 
         # cache the url
-        with open(plenum_target_folder / cached_video_source_url_file_name, "w") as f:
+        with open(
+            plenum_id_target_folder / cached_video_source_url_file_name, "w"
+        ) as f:
             f.write(video_resource_url)
 
     return video_resource_url
@@ -343,14 +344,14 @@ def get_video_resource_url(
 
 def get_html_ts_map(
     knesset_http_headers: dict,
-    plenum_target_folder: pathlib.Path,
+    plenum_id_target_folder: pathlib.Path,
     plenum_recording_id: str,
 ):
     # check if a cache file of the HTML TS map exists
-    if pathlib.Path(plenum_target_folder / cached_html_ts_map_file_name).exists():
+    if pathlib.Path(plenum_id_target_folder / cached_html_ts_map_file_name).exists():
         print("Reusing cached HTML->Timestamp mapping...")
         html_ts_map_js_array = np.load(
-            plenum_target_folder / cached_html_ts_map_file_name
+            plenum_id_target_folder / cached_html_ts_map_file_name
         )
     else:
         print("Loading HTML->Timestamp mapping...")
@@ -369,7 +370,7 @@ def get_html_ts_map(
 
         # save a cached copy of the HTML TS map
         np.save(
-            plenum_target_folder / cached_html_ts_map_file_name,
+            plenum_id_target_folder / cached_html_ts_map_file_name,
             html_ts_map_js_array,
         )
 
@@ -378,14 +379,16 @@ def get_html_ts_map(
 
 def get_html_transcript(
     knesset_http_headers: dict,
-    plenum_target_folder: pathlib.Path,
+    plenum_id_target_folder: pathlib.Path,
     plenum_recording_id: str,
 ):
     # If a temp HTML traanscript file exists, use that
-    if pathlib.Path(plenum_target_folder / cached_transcript_html_file_name).exists():
+    if pathlib.Path(
+        plenum_id_target_folder / cached_transcript_html_file_name
+    ).exists():
         print("Reusing cached transcript HTML file from previouse run")
         with open(
-            plenum_target_folder / cached_transcript_html_file_name, "r"
+            plenum_id_target_folder / cached_transcript_html_file_name, "r"
         ) as transcript_html_file:
             html_transcript = transcript_html_file.read()
     else:
@@ -399,7 +402,7 @@ def get_html_transcript(
 
         # download the content for each page
         pages_content = []
-        print(f"Downlding {page_count} pages of transcript content.")
+        print(f"Downloading {page_count} pages of transcript content.")
         for page_idx in range(page_count):
             print(f"Downloading transcript HTML content - page {page_idx + 1}")
 
@@ -418,17 +421,18 @@ def get_html_transcript(
         html_transcript = f'<div id="root">{html_transcript_snippet}</div>'
 
         # Store the HTML transcript artifact in case a retry is needed
-        with open(plenum_target_folder / cached_transcript_html_file_name, "w") as f:
+        with open(plenum_id_target_folder / cached_transcript_html_file_name, "w") as f:
             f.write(html_transcript)
 
     return html_transcript
 
 
-def download_video_audio_recording(
-    plenum_target_folder: pathlib, video_resource_url: str
+def download_video_recording(
+    plenum_id_target_folder: pathlib,
+    video_resource_url: str,
 ):
     # Check if the output video file already exists
-    if not pathlib.Path(plenum_target_folder / output_video_file_name).exists():
+    if not pathlib.Path(plenum_id_target_folder / output_video_file_name).exists():
         # Download the vidoe file
         print("Downloading video file...")
         command_parts = [
@@ -438,18 +442,29 @@ def download_video_audio_recording(
             "-s",
             "16",
             "-k",
-            "1M",
+            "40M",
             "-q",
             video_resource_url,
             "-d",
-            plenum_target_folder,
+            str(plenum_id_target_folder),
             "-o",
             output_video_file_name,
         ]
-        subprocess.check_call(command_parts, shell=True)
+        subprocess.check_call(command_parts)
     else:
         print("Video file already downloaded. Skipping.")
 
+
+def transcode_video_to_audio(
+    id: str,
+    plenum_target_folder: pathlib,
+    plenum_id_target_folder: pathlib,
+):
+    if not pathlib.Path(plenum_id_target_folder / output_video_file_name).exists():
+        print("No video file exists - skipping audio transcoding.")
+        return
+
+    output_audio_file_name = f"{id}.mp3"
     if not pathlib.Path(plenum_target_folder / output_audio_file_name).exists():
         # Transcode the video to an audio file
         print("Transcoding video to audio...")
@@ -462,7 +477,7 @@ def download_video_audio_recording(
             "-loglevel",
             "error",
             "-i",
-            str(plenum_target_folder / output_video_file_name),
+            str(plenum_id_target_folder / output_video_file_name),
             "-vn",
             "-acodec",
             "mp3",
@@ -479,23 +494,26 @@ def download_plenum(
     target_dir: pathlib.Path,
     skip_download_video_file: bool = False,
 ):
-    plenum_target_folder = target_dir / "plenum" / id
+    # Stores the output audio an transcript - with name based on the plenum id
+    plenum_target_folder = target_dir / "plenum"
+    # Stores caches, intermediary, and other artifacts for this id
+    plenum_id_target_folder = target_dir / "plenum" / id
 
-    if not pathlib.Path(plenum_target_folder).exists():
-        plenum_target_folder.mkdir(parents=True, exist_ok=True)
+    if not pathlib.Path(plenum_id_target_folder).exists():
+        plenum_id_target_folder.mkdir(parents=True, exist_ok=True)
 
     video_resource_url = get_video_resource_url(
-        knesset_http_headers, plenum_target_folder, id
+        knesset_http_headers, plenum_id_target_folder, id
     )
 
     print(f"Plenum video resource url: {video_resource_url} (Not downloading yet..)")
 
     html_ts_map_js_array = get_html_ts_map(
-        knesset_http_headers, plenum_target_folder, id
+        knesset_http_headers, plenum_id_target_folder, id
     )
 
     html_transcript = get_html_transcript(
-        knesset_http_headers, plenum_target_folder, id
+        knesset_http_headers, plenum_id_target_folder, id
     )
 
     print("Parsing HTML transcript...")
@@ -503,22 +521,23 @@ def download_plenum(
         html_transcript, html_ts_map_js_array
     )
 
-    print("Creating a VTT file of the transcript...")
-    vtt = create_plenum_transcript_vtt(transcript_text, transcript_time_index_df)
-    vtt.save(plenum_target_folder / output_transcript_vtt_file_name, add_bom=True)
-
     # Store the output artifacts
-    with open(plenum_target_folder / output_transcript_text_file_name, "w") as f:
+    with open(plenum_id_target_folder / output_transcript_text_file_name, "w") as f:
         f.write(transcript_text)
     transcript_time_index_df.to_csv(
-        plenum_target_folder / output_transcript_time_index_file_name
+        plenum_id_target_folder / output_transcript_time_index_file_name
     )
 
-    if not skip_download_video_file:
-        download_video_audio_recording(plenum_target_folder, video_resource_url)
+    print("Creating a VTT file of the transcript...")
+    vtt = create_plenum_transcript_vtt(transcript_text, transcript_time_index_df)
+    vtt.save(plenum_target_folder / f"{id}.vtt", add_bom=True)
 
+    if not skip_download_video_file:
+        download_video_recording(plenum_id_target_folder, video_resource_url)
     else:
         print("Skipping video file download.")
+
+    transcode_video_to_audio(id, plenum_target_folder, plenum_id_target_folder)
 
     print(f"Download plenum {id} done.")
 
