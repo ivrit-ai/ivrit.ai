@@ -23,7 +23,7 @@ evaluate
 yt_dlp
 beautifulsoup4
 openai
-webvtt
+webvtt-py
 scipy
 tqdm
 pydantic
