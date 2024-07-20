@@ -7,6 +7,7 @@ from time import strptime
 from dtw import dtw
 import numpy as np
 from scipy.special import softmax
+from scipy.spatial.distance import cosine
 from tqdm import tqdm
 from webvtt import WebVTT
 
@@ -42,8 +43,9 @@ def find_split_points(text):
     # Find all occurrences of the pattern
     split_points = [match.start() for match in re.finditer(pattern, text)]
 
-    if split_points[0] > 0:
+    if len(split_points) == 0 or split_points[0] > 0:
         split_points = [0, *split_points]
+
     return np.asarray(split_points)
 
 
@@ -58,19 +60,19 @@ def generate_transcription_character_dictionary(
     reference_text,
 ) -> tuple[dict[str, int], np.ndarray]:
     cleaned_up_text_for_dict_gen = re.sub(
-        r"\s+", " ", reference_text
+        r"[\s,.?]+", " ", reference_text
     )  # Consdier sampling if text here is huge
     dict_vocab = sorted(list(set(list(cleaned_up_text_for_dict_gen))))
     # create a dict which maps from a vocab character to an index in this character-histogram vector
-    dict = {c: i for i, c in enumerate(dict_vocab)}
+    dictionary = {c: i for i, c in enumerate(dict_vocab)}
     # calc the weights for the dict - it is proportional to how "rare" a character is in the text
     # but make sure it is logistically approaching 0..1 range
     dict_weights = np.zeros(len(dict_vocab))
     for c in dict_vocab:
-        dict_weights[dict.get(c)] = cleaned_up_text_for_dict_gen.count(c)
+        dict_weights[dictionary.get(c)] = cleaned_up_text_for_dict_gen.count(c)
     dict_weights = softmax(1 / dict_weights)
 
-    return dict, dict_weights
+    return dictionary, dict_weights
 
 
 def get_transcript_for_time_range(
@@ -102,8 +104,8 @@ def get_transcript_for_time_range(
         raise ValueError("Transcript lookup out of range.")
 
     segment_split_points = (
-        np.min(ts_index[1, start_range_idx:end_range_idx]),
-        np.max(ts_index[1, start_range_idx:end_range_idx]),
+        np.min(ts_index[1, start_range_idx : end_range_idx + 1]),
+        np.max(ts_index[1, start_range_idx : end_range_idx + 1]),
     )
 
     split_below, split_above = get_approximate_text_split_points(
@@ -111,6 +113,32 @@ def get_transcript_for_time_range(
     )
 
     return text[split_below:split_above]
+
+
+def encode_text_window(
+    text_window: str, char_dict: dict[str, int], dict_weights: np.ndarray
+) -> np.ndarray:
+    # calculate the "histogram" over the dictionary as the X axis
+    window_hist = np.zeros(len(char_dict))
+    window_sum = 0
+    for j in range(0, len(text_window)):
+        idx_of_vocab_char = char_dict.get(text_window[j])
+        # Only count characters in dict
+        if idx_of_vocab_char is not None:
+            window_hist[idx_of_vocab_char] += 1
+
+        # normalize the histogram
+        window_sum = np.sum(window_hist)
+
+    # If the histogram captured nothing - this window is not over
+    # representable text from the dictionary
+    if window_sum == 0:
+        # Don't consider this a valid window
+        return None
+
+    window_hist = window_hist / window_sum
+    window_hist_weighted = window_hist * dict_weights
+    return window_hist_weighted
 
 
 def encode_text_stream(
@@ -130,27 +158,12 @@ def encode_text_stream(
         )
         window = text_stream[curr_window_slice]
 
-        # calculate the "histogram" over the dictionary as the X axis
-        window_hist = np.zeros(len(char_dict))
-        for j in range(0, len(window)):
-            idx_of_vocab_char = char_dict.get(window[j])
-            # Only count characters in dict
-            if idx_of_vocab_char is not None:
-                window_hist[idx_of_vocab_char] += 1
-
-        # normalize the histogram
-        window_sum = np.sum(window_hist)
-
-        # If the histogram captured nothing - this window is not over
-        # representable text from the dictionary
-        if window_sum == 0:
-            # Don't apprent it it the output vector
+        window_hist = encode_text_window(window, char_dict, dict_weights)
+        if window_hist is None:
             continue
 
-        window_hist = window_hist / window_sum
-        window_hist_weighted = window_hist * dict_weights
         # print the histogram
-        window_hists.append(window_hist_weighted)
+        window_hists.append(window_hist)
 
     # append all hists to a np matrix and return
     return np.array(window_hists)
@@ -162,18 +175,114 @@ def find_nearest_idx(array, value):
     return idx
 
 
-# TODO: bound matching is not working well for all cases
-# need to move to a more robust matching at edges to find correct split points
-def find_nearest_above(array, value):
-    idx = find_nearest_idx(array, value)
-    idx += 1
-    return array[min(idx, array.size - 1)]
+def find_matching_edge(
+    anchor_split_point: int,
+    edge_hist: np.ndarray,
+    ref_text: str,
+    ref_split_points: np.ndarray,
+    char_dict: dict[str, int],
+    dict_weights: np.ndarray,
+):
+    max_dist_to_consider = 0.35
+    best_edge_dist = np.inf
+    best_edge_idx = anchor_split_point
+    for split_idx_on_ref in range(anchor_split_point - 2, anchor_split_point + 2):
+        if split_idx_on_ref < 0 or split_idx_on_ref + 1 >= len(ref_split_points):
+            continue
+
+        checked_edge_slice = slice(
+            ref_split_points[split_idx_on_ref],
+            ref_split_points[split_idx_on_ref + 1],
+        )
+        checked_edge = ref_text[checked_edge_slice]
+        checked_edge_hist = encode_text_window(checked_edge, char_dict, dict_weights)
+        if checked_edge_hist is None:
+            continue
+
+        edge_match_dist = cosine(edge_hist, checked_edge_hist)
+        if edge_match_dist < best_edge_dist and edge_match_dist < max_dist_to_consider:
+            best_edge_dist = edge_match_dist
+            best_edge_idx = split_idx_on_ref
+
+    return best_edge_idx
 
 
-def find_nearest_below(array, value):
-    idx = find_nearest_idx(array, value)
-    idx -= 1
-    return array[max(0, idx)]
+def find_exact_ref_edges(
+    ref_text: str,
+    query_text: str,
+    index_mapping_of_ref_to_qry: np.ndarray,
+    char_dict: dict[str, int],
+    dict_weights: np.ndarray,
+):
+    # if the splitted edge it too short
+    # It could be a punctuation or a word boundary
+    # take another one until enough signal is cpatured for that edge
+    minimal_edge_split_text_len = 4
+
+    ref_snippet_split_points = np.array(find_split_points(ref_text))
+    query_snippet_split_points = np.array(find_split_points(query_text))
+
+    ## Find Lower Bound in ref
+
+    # Find where the split of the query edge should be taken from
+    valid_split_points_idx_for_lower_edge = (
+        query_snippet_split_points - minimal_edge_split_text_len >= 0
+    ).nonzero()[0]
+    if valid_split_points_idx_for_lower_edge.size > 0:
+        lower_edge_split_idx = valid_split_points_idx_for_lower_edge[0]
+        query_lower_edge_take_to = query_snippet_split_points[lower_edge_split_idx]
+    else:
+        query_lower_edge_take_to = len(query_text)
+
+    # Take the query edge - and use that to find the est edge in the reference
+    query_lower_edge = query_text[:query_lower_edge_take_to]
+    lower_edge_hist = encode_text_window(query_lower_edge, char_dict, dict_weights)
+    lower_edge_anchor_aplit_idx_on_ref = find_nearest_idx(
+        ref_snippet_split_points, index_mapping_of_ref_to_qry[0]
+    )
+    lower_ref_split_point_idx = find_matching_edge(
+        lower_edge_anchor_aplit_idx_on_ref,
+        lower_edge_hist,
+        ref_text,
+        ref_snippet_split_points,
+        char_dict,
+        dict_weights,
+    )
+
+    ## Find Upper Bound in ref
+
+    # Find where the split of the query edge should be taken from
+    valid_split_points_idx_for_upper_edge = (
+        len(query_text) - minimal_edge_split_text_len - query_snippet_split_points >= 0
+    ).nonzero()[0]
+    if valid_split_points_idx_for_upper_edge.size > 0:
+        upper_edge_split_idx = valid_split_points_idx_for_upper_edge[-1]
+        query_upper_edge_take_from = query_snippet_split_points[upper_edge_split_idx]
+    else:
+        query_upper_edge_take_from = 0
+
+    # Take the query edge - and use that to find the est edge in the reference
+    query_upper_edge = query_text[query_upper_edge_take_from:]
+    upper_edge_hist = encode_text_window(query_upper_edge, char_dict, dict_weights)
+    upper_edge_anchor_aplit_idx_on_ref = find_nearest_idx(
+        ref_snippet_split_points, index_mapping_of_ref_to_qry[-1]
+    )
+    upper_ref_split_point_idx = find_matching_edge(
+        upper_edge_anchor_aplit_idx_on_ref,
+        upper_edge_hist,
+        ref_text,
+        ref_snippet_split_points,
+        char_dict,
+        dict_weights,
+    )
+
+    return (
+        ref_snippet_split_points[lower_ref_split_point_idx],
+        # Include the last splited text
+        ref_snippet_split_points[
+            min(upper_ref_split_point_idx + 1, len(ref_snippet_split_points) - 1)
+        ],
+    )
 
 
 def align_split(
@@ -245,17 +354,18 @@ def align_split(
         index_mapping_of_ref_to_qry = alignment.index2
 
         # Find the natural locations to cut out parts from the reference text
-        ref_snippet_split_points = np.array(find_split_points(ref_text_around_split))
-
-        start_to_pick_from_ref = find_nearest_below(
-            ref_snippet_split_points, index_mapping_of_ref_to_qry[0]
-        )
-        end_to_pick_from_ref = find_nearest_above(
-            ref_snippet_split_points, index_mapping_of_ref_to_qry[-1]
+        start_to_pick_from_ref, end_to_pick_from_ref = find_exact_ref_edges(
+            ref_text_around_split,
+            split_qry_text,
+            index_mapping_of_ref_to_qry,
+            char_dict,
+            char_dict_weights,
         )
 
         final_snippet = ref_text_around_split[
-            start_to_pick_from_ref:end_to_pick_from_ref
+            start_to_pick_from_ref:(
+                end_to_pick_from_ref
+            )  # Include the last splited text
         ].strip()
 
         if not final_snippet:
@@ -410,8 +520,8 @@ if __name__ == "__main__":
         "--reference-text-neighborhood-size",
         type=int,
         required=False,
-        default=10,
-        help="Size before and after split time range to gather reference text to match against",
+        default=25,
+        help="Size in seconds before and after split time range to gather reference text to match against",
     )
 
     # Parse the arguments
