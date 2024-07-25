@@ -296,11 +296,11 @@ def cleanup_html_time_map_arr(time_map_arr: np.ndarray) -> np.ndarray:
 
     # go over values in ascending order - if it deviates too much - use the prev value instead
     # TODO - calc those numbers from diff histograms - or find a more robust algorithm to clean this up
-    max_backards_jump = 15
+    max_backwards_jump = 15
     max_forward_jump = 30
     for ith in range(min_referenced_time_idx, len(time_map_arr) - 1):
         if (
-            time_map_arr[ith] - time_map_arr[ith + 1] > max_backards_jump
+            time_map_arr[ith] - time_map_arr[ith + 1] > max_backwards_jump
         ):  # backwards time jump - 30 seconds tolerance or fix it
             time_map_arr[ith + 1] = time_map_arr[ith]
         elif (
