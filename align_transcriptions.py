@@ -70,7 +70,12 @@ def generate_transcription_character_dictionary(
     dict_weights = np.zeros(len(dict_vocab))
     for c in dict_vocab:
         dict_weights[dictionary.get(c)] = cleaned_up_text_for_dict_gen.count(c)
-    dict_weights = softmax(1 / dict_weights)
+    logged_up = np.log(dict_weights)
+    max_range = np.max(logged_up)
+    min_range = np.min(logged_up)
+    scale = max_range - min_range
+    scaled = (logged_up - min_range) / scale
+    dict_weights = softmax(1 - scaled)
 
     return dictionary, dict_weights
 
@@ -301,7 +306,23 @@ def align_split(
             return
 
     time_start_s, time_end_s = split
-    split_transcript = trans_store["transcripts"][idx]
+    split_transcript = None
+
+    # TODO: The list structure for lookup by a sub prop of a json element
+    # Is inefficient - Consider storing the transcription store as an id: val lookup dict
+    # The reason we need to lookup by the split idx is that some splits would not have a transcription
+    for t_s in trans_store["transcripts"]:
+        if t_s["split_idx"] == idx:
+            split_transcript = t_s
+            break
+
+    # A missing transcript is possible, if for example
+    # The transcription server could not find any sppeach parts
+    # In the audio split. Skip this transcription - this sample
+    # Will be dropped from the output dataset
+    if split_transcript is None:
+        return None
+
     split_seg_texts = []
     max_logprob = -np.inf
 
@@ -454,6 +475,8 @@ def align(args):
         )
         for idx, split in tqdm(enumerate(tqdm(splits_desc["splits"])))
     ]
+    # Some transcripts may not work out - drop them from final output
+    aligned_transcripts = [at for at in aligned_transcripts if at is not None]
 
     if not args.skip_output_file:
         json.dump(
