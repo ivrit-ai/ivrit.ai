@@ -265,7 +265,7 @@ def create_caption(text: str, start: float, end: float) -> Caption:
 
 def create_plenum_transcript_vtt(text: str, time_index: pd.DataFrame) -> WebVTT:
     vtt = WebVTT()
-    time_index = time_index.copy()
+    time_index = time_index.copy()  # assumed to be sorted
     time_index["next_ts"] = time_index.timestamp.shift(-1).ffill()
 
     # Before any caption of text - there might be some "non timed text" that we want to keep
@@ -279,11 +279,26 @@ def create_plenum_transcript_vtt(text: str, time_index: pd.DataFrame) -> WebVTT:
             )
         )
 
+    merging_next = False
+    merge_start_loc = None
     for _, data in time_index.iterrows():
-        text_range_slice = slice(int(data["start_loc"]), int(data["end_loc"]))
-        vtt.captions.append(
-            create_caption(text[text_range_slice], data["timestamp"], data["next_ts"])
-        )
+        # merge consecutive slices sharing the same TS
+        if data["next_ts"] == data["timestamp"]:
+            merge_start_loc = merge_start_loc or data["start_loc"]
+            merging_next = True
+        else:
+            slice_start_loc = data["start_loc"]
+            if merging_next:
+                merging_next = False
+                slice_start_loc = merge_start_loc
+                merge_start_loc = None
+
+            text_range_slice = slice(int(slice_start_loc), int(data["end_loc"]))
+            vtt.captions.append(
+                create_caption(
+                    text[text_range_slice], data["timestamp"], data["next_ts"]
+                )
+            )
     return vtt
 
 
@@ -296,7 +311,7 @@ def cleanup_html_time_map_arr(time_map_arr: np.ndarray) -> np.ndarray:
 
     # go over values in ascending order - if it deviates too much - use the prev value instead
     # TODO - calc those numbers from diff histograms - or find a more robust algorithm to clean this up
-    max_backwards_jump = 15
+    max_backwards_jump = 0
     max_forward_jump = 30
     for ith in range(min_referenced_time_idx, len(time_map_arr) - 1):
         if (
