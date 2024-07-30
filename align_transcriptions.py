@@ -239,20 +239,24 @@ def find_exact_ref_edges(
     else:
         query_lower_edge_take_to = len(query_text)
 
-    # Take the query edge - and use that to find the est edge in the reference
+    # Take the query edge - and use that to find the best edge in the reference
     query_lower_edge = query_text[:query_lower_edge_take_to]
     lower_edge_hist = encode_text_window(query_lower_edge, char_dict, dict_weights)
-    lower_edge_anchor_aplit_idx_on_ref = find_nearest_idx(
-        ref_snippet_split_points, index_mapping_of_ref_to_qry[0]
-    )
-    lower_ref_split_point_idx = find_matching_edge(
-        lower_edge_anchor_aplit_idx_on_ref,
-        lower_edge_hist,
-        ref_text,
-        ref_snippet_split_points,
-        char_dict,
-        dict_weights,
-    )
+    if lower_edge_hist is not None:
+        lower_edge_anchor_aplit_idx_on_ref = find_nearest_idx(
+            ref_snippet_split_points, index_mapping_of_ref_to_qry[0]
+        )
+        lower_ref_split_point_idx = find_matching_edge(
+            lower_edge_anchor_aplit_idx_on_ref,
+            lower_edge_hist,
+            ref_text,
+            ref_snippet_split_points,
+            char_dict,
+            dict_weights,
+        )
+    # Fallback when the query text cannot produce a valid histogram
+    else:
+        lower_ref_split_point_idx = 0
 
     ## Find Upper Bound in ref
 
@@ -269,21 +273,25 @@ def find_exact_ref_edges(
     # Take the query edge - and use that to find the est edge in the reference
     query_upper_edge = query_text[query_upper_edge_take_from:]
     upper_edge_hist = encode_text_window(query_upper_edge, char_dict, dict_weights)
-    upper_edge_anchor_aplit_idx_on_ref = find_nearest_idx(
-        ref_snippet_split_points, index_mapping_of_ref_to_qry[-1]
-    )
-    upper_ref_split_point_idx = find_matching_edge(
-        upper_edge_anchor_aplit_idx_on_ref,
-        upper_edge_hist,
-        ref_text,
-        ref_snippet_split_points,
-        char_dict,
-        dict_weights,
-    )
+    if upper_edge_hist is not None:
+        upper_edge_anchor_aplit_idx_on_ref = find_nearest_idx(
+            ref_snippet_split_points, index_mapping_of_ref_to_qry[-1]
+        )
+        upper_ref_split_point_idx = find_matching_edge(
+            upper_edge_anchor_aplit_idx_on_ref,
+            upper_edge_hist,
+            ref_text,
+            ref_snippet_split_points,
+            char_dict,
+            dict_weights,
+        )
+    # Fallback when the query text cannot produce a valid histogram
+    else:
+        upper_ref_split_point_idx = len(ref_snippet_split_points) - 1
 
     return (
         ref_snippet_split_points[lower_ref_split_point_idx],
-        # Include the last splited text
+        # Include the last splitted text
         ref_snippet_split_points[
             min(upper_ref_split_point_idx + 1, len(ref_snippet_split_points) - 1)
         ],
@@ -384,9 +392,7 @@ def align_split(
         )
 
         final_snippet = ref_text_around_split[
-            start_to_pick_from_ref:(
-                end_to_pick_from_ref
-            )  # Include the last splited text
+            start_to_pick_from_ref:end_to_pick_from_ref
         ].strip()
 
         if not final_snippet:
