@@ -301,11 +301,22 @@ def cleanup_html_time_map_arr(time_map_arr: np.ndarray) -> np.ndarray:
     for ith in range(min_referenced_time_idx, len(time_map_arr) - 1):
         if (
             time_map_arr[ith] - time_map_arr[ith + 1] > max_backwards_jump
-        ):  # backwards time jump - 30 seconds tolerance or fix it
+        ):  # backwards time jump - over tolerance - fix it
             time_map_arr[ith + 1] = time_map_arr[ith]
         elif (
             time_map_arr[ith + 1] - time_map_arr[ith] > max_forward_jump
         ):  # Forward jump is too big - fix it
+            # Skip the bad value and look forward a bit to get an estimate
+            # of where the series continues
+            future_baseline = np.median(time_map_arr[ith + 2 : ith + 10 : 2])
+            # If the next value is closer to the future baseline - use it
+            # despite it being an abnormal jump - perhaps this jump is required.
+            if abs(time_map_arr[ith + 1] - future_baseline) < abs(
+                time_map_arr[ith] - future_baseline
+            ):
+                continue
+
+            # Otherwise - fix it by taking the max allowed jump
             time_map_arr[ith + 1] = time_map_arr[ith] + max_forward_jump
 
     return time_map_arr
