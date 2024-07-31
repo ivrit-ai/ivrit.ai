@@ -22,16 +22,12 @@ def extract_text_and_time_index_from_vtt(vtt):
         total_text_length += len(caption.text)
         time_obj = strptime(caption.start, "%H:%M:%S.%f")
         start_seconds = time_obj.tm_hour * 3600 + time_obj.tm_min * 60 + time_obj.tm_sec
-        time_index_coords.append(
-            (start_seconds, text_length_before_text_part, total_text_length)
-        )
+        time_index_coords.append((start_seconds, text_length_before_text_part, total_text_length))
 
     all_text = "".join(all_text_parts)
     time_index = np.asarray(time_index_coords)
     sorted_time_index = time_index[time_index[:, 0].argsort()]
-    sorted_time_index = (
-        sorted_time_index.T
-    )  # 3 x N, row 0 = ts, row 1 = start_loc, row 2 = end_loc
+    sorted_time_index = sorted_time_index.T  # 3 x N, row 0 = ts, row 1 = start_loc, row 2 = end_loc
 
     return all_text, sorted_time_index
 
@@ -59,9 +55,7 @@ def get_approximate_text_split_points(text_split_points, low_target, high_target
 def generate_transcription_character_dictionary(
     reference_text,
 ) -> tuple[dict[str, int], np.ndarray]:
-    cleaned_up_text_for_dict_gen = re.sub(
-        r"[\s,.?]+", " ", reference_text
-    )  # Consdier sampling if text here is huge
+    cleaned_up_text_for_dict_gen = re.sub(r"[\s,.?]+", " ", reference_text)  # Consdier sampling if text here is huge
     dict_vocab = sorted(list(set(list(cleaned_up_text_for_dict_gen))))
     # create a dict which maps from a vocab character to an index in this character-histogram vector
     dictionary = {c: i for i, c in enumerate(dict_vocab)}
@@ -97,10 +91,7 @@ def get_transcript_for_time_range(
     # Cannot get an inclusive time range from the index
     if end_range_idx - start_range_idx == 0:
         # If start is within the index, then we can get the closest one
-        if (
-            start_time_with_buffer >= ts_index[0, 0]
-            and start_time_with_buffer <= ts_index[0, -1]
-        ):
+        if start_time_with_buffer >= ts_index[0, 0] and start_time_with_buffer <= ts_index[0, -1]:
             # Get the closest one
             start_range_idx = np.abs(ts_index[0] - start_time_with_buffer).argmin()
             end_range_idx = start_range_idx + 1
@@ -113,16 +104,12 @@ def get_transcript_for_time_range(
         np.max(ts_index[1, start_range_idx : end_range_idx + 1]),
     )
 
-    split_below, split_above = get_approximate_text_split_points(
-        text_split_points, *segment_split_points
-    )
+    split_below, split_above = get_approximate_text_split_points(text_split_points, *segment_split_points)
 
     return text[split_below:split_above]
 
 
-def encode_text_window(
-    text_window: str, char_dict: dict[str, int], dict_weights: np.ndarray
-) -> np.ndarray:
+def encode_text_window(text_window: str, char_dict: dict[str, int], dict_weights: np.ndarray) -> np.ndarray:
     # calculate the "histogram" over the dictionary as the X axis
     window_hist = np.zeros(len(char_dict))
     window_sum = 0
@@ -230,9 +217,7 @@ def find_exact_ref_edges(
     ## Find Lower Bound in ref
 
     # Find where the split of the query edge should be taken from
-    valid_split_points_idx_for_lower_edge = (
-        query_snippet_split_points - minimal_edge_split_text_len >= 0
-    ).nonzero()[0]
+    valid_split_points_idx_for_lower_edge = (query_snippet_split_points - minimal_edge_split_text_len >= 0).nonzero()[0]
     if valid_split_points_idx_for_lower_edge.size > 0:
         lower_edge_split_idx = valid_split_points_idx_for_lower_edge[0]
         query_lower_edge_take_to = query_snippet_split_points[lower_edge_split_idx]
@@ -243,9 +228,7 @@ def find_exact_ref_edges(
     query_lower_edge = query_text[:query_lower_edge_take_to]
     lower_edge_hist = encode_text_window(query_lower_edge, char_dict, dict_weights)
     if lower_edge_hist is not None:
-        lower_edge_anchor_aplit_idx_on_ref = find_nearest_idx(
-            ref_snippet_split_points, index_mapping_of_ref_to_qry[0]
-        )
+        lower_edge_anchor_aplit_idx_on_ref = find_nearest_idx(ref_snippet_split_points, index_mapping_of_ref_to_qry[0])
         lower_ref_split_point_idx = find_matching_edge(
             lower_edge_anchor_aplit_idx_on_ref,
             lower_edge_hist,
@@ -274,9 +257,7 @@ def find_exact_ref_edges(
     query_upper_edge = query_text[query_upper_edge_take_from:]
     upper_edge_hist = encode_text_window(query_upper_edge, char_dict, dict_weights)
     if upper_edge_hist is not None:
-        upper_edge_anchor_aplit_idx_on_ref = find_nearest_idx(
-            ref_snippet_split_points, index_mapping_of_ref_to_qry[-1]
-        )
+        upper_edge_anchor_aplit_idx_on_ref = find_nearest_idx(ref_snippet_split_points, index_mapping_of_ref_to_qry[-1])
         upper_ref_split_point_idx = find_matching_edge(
             upper_edge_anchor_aplit_idx_on_ref,
             upper_edge_hist,
@@ -292,9 +273,7 @@ def find_exact_ref_edges(
     return (
         ref_snippet_split_points[lower_ref_split_point_idx],
         # Include the last splitted text
-        ref_snippet_split_points[
-            min(upper_ref_split_point_idx + 1, len(ref_snippet_split_points) - 1)
-        ],
+        ref_snippet_split_points[min(upper_ref_split_point_idx + 1, len(ref_snippet_split_points) - 1)],
     )
 
 
@@ -360,9 +339,7 @@ def align_split(
         is_fallback = True
 
     if not is_fallback:
-        query_embedding = encode_text_stream(
-            split_qry_text, args.text_hist_window_size, char_dict, char_dict_weights
-        )
+        query_embedding = encode_text_stream(split_qry_text, args.text_hist_window_size, char_dict, char_dict_weights)
         ref_embedding = encode_text_stream(
             ref_text_around_split,
             args.text_hist_window_size,
@@ -391,9 +368,7 @@ def align_split(
             char_dict_weights,
         )
 
-        final_snippet = ref_text_around_split[
-            start_to_pick_from_ref:end_to_pick_from_ref
-        ].strip()
+        final_snippet = ref_text_around_split[start_to_pick_from_ref:end_to_pick_from_ref].strip()
 
         if not final_snippet:
             is_fallback = True
@@ -424,8 +399,7 @@ def align_split(
 
 def align(args):
     output_transcripts_file = (
-        pathlib.Path(args.transcripts_file).parent
-        / f"{pathlib.Path(args.transcripts_file).stem}.aligned.json"
+        pathlib.Path(args.transcripts_file).parent / f"{pathlib.Path(args.transcripts_file).stem}.aligned.json"
     )
 
     # If output transcript file exists - no need to reprocess
@@ -456,9 +430,7 @@ def align(args):
     text_natural_split_points = find_split_points(reference_text)
 
     # Character dictionary for corpus
-    char_dict, char_dict_weights = generate_transcription_character_dictionary(
-        reference_text
-    )
+    char_dict, char_dict_weights = generate_transcription_character_dictionary(reference_text)
 
     # Go over all splits
     aligned_transcripts = []
@@ -499,9 +471,7 @@ def align(args):
 
 if __name__ == "__main__":
     # Define an argument parser
-    parser = argparse.ArgumentParser(
-        description="""Align external transcription with split transcriptions"""
-    )
+    parser = argparse.ArgumentParser(description="""Align external transcription with split transcriptions""")
 
     # Add the arguments
     parser.add_argument(

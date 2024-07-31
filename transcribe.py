@@ -75,9 +75,7 @@ async def transcribe_splits(
 
     for split_base in range(start_at_split, num_splits, max_paralle_requests):
         tasks = []
-        for split_idx in range(
-            split_base, min(split_base + max_paralle_requests, num_splits)
-        ):
+        for split_idx in range(split_base, min(split_base + max_paralle_requests, num_splits)):
             split_audio_path = desc_filename.parent / f"{split_idx}.mp3"
             if not split_audio_path.exists():
                 raise Exception(f"Unable to find split {split_idx}.")
@@ -180,9 +178,7 @@ async def transcribe_audio_source(desc_filename, args):
         ith_sample_df = run_state_df[run_state_df["split_idx"] == sample_idx]
         segments = []
         for ith_seg_idx in np.sort(ith_sample_df["segment_idx"].unique()):
-            segment_row = ith_sample_df[
-                ith_sample_df["segment_idx"] == ith_seg_idx
-            ].iloc[0]
+            segment_row = ith_sample_df[ith_sample_df["segment_idx"] == ith_seg_idx].iloc[0]
             segments.append(
                 {
                     "id": int(ith_seg_idx),
@@ -231,9 +227,7 @@ def transcribe(args):
 
 if __name__ == "__main__":
     # Define an argument parser
-    parser = argparse.ArgumentParser(
-        description="Transcribe a set of audio snippets generated using process.py files."
-    )
+    parser = argparse.ArgumentParser(description="Transcribe a set of audio snippets generated using process.py files.")
 
     # Add the arguments
     parser.add_argument(
@@ -272,9 +266,7 @@ if __name__ == "__main__":
         default=10,
         help="Store state every N processed splits.",
     )
-    parser.add_argument(
-        "--server-url", type=str, required=True, help="Transcription server URL."
-    )
+    parser.add_argument("--server-url", type=str, required=True, help="Transcription server URL.")
     parser.add_argument(
         "--max-parallel-requests",
         type=int,

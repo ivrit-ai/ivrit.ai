@@ -47,9 +47,7 @@ def transcribe_audio():
         if request.form.get("temperature") is not None:
             request_data.temperature = float(request.form.get("temperature"))
         if request.form.get("timestamp_granularities[]") is not None:
-            request_data.timestamp_granularities = request.form.getlist(
-                "timestamp_granularities[]"
-            )
+            request_data.timestamp_granularities = request.form.getlist("timestamp_granularities[]")
     except Exception as e:
         return str(e), HTTPStatus.BAD_REQUEST
 
@@ -77,9 +75,7 @@ def transcribe_audio():
                 )
 
                 # Format the response
-                response = segments_to_response(
-                    segments, transcription_info, request_data.response_format
-                )
+                response = segments_to_response(segments, transcription_info, request_data.response_format)
                 if request_data.response_format == ResponseFormat.TEXT:
                     return response, HTTPStatus.OK, {"Content-Type": "text/plain"}
 
@@ -176,9 +172,7 @@ from the Hugging Face Hub.""",
     )
     args = parser.parse_args()
 
-    print(
-        f"Loading whisper model: {args.model}. pid={os.getpid()} tid={threading.current_thread().native_id}"
-    )
+    print(f"Loading whisper model: {args.model}. pid={os.getpid()} tid={threading.current_thread().native_id}")
 
     whisper_models = []
     for i in range(args.max_concurrent_tasks):

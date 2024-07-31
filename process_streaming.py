@@ -28,9 +28,7 @@ def bulk_vad(args):
         parallel_processes = args.jobs
 
     audio_files = utils.find_files(args.root_dir, args.skip_dir, [".mp3", ".m4a"])
-    processing_groups = [
-        audio_files[i::parallel_processes] for i in range(parallel_processes)
-    ]
+    processing_groups = [audio_files[i::parallel_processes] for i in range(parallel_processes)]
 
     vad_process_config = {
         "target_dir": args.target_dir,
@@ -47,17 +45,12 @@ def bulk_vad(args):
     with Pool(processes=len(processing_groups)) as pool:
         pool.starmap(
             invoke_processing_group,
-            [
-                (i, processing_groups[i], vad_process_config)
-                for i in range(len(processing_groups))
-            ],
+            [(i, processing_groups[i], vad_process_config) for i in range(len(processing_groups))],
         )
 
 
 def invoke_processing_group(this_group_id: int, this_group: list, config):
-    model, torch_utils = torch.hub.load(
-        repo_or_dir="snakers4/silero-vad", model="silero_vad"
-    )
+    model, torch_utils = torch.hub.load(repo_or_dir="snakers4/silero-vad", model="silero_vad")
     bulk_vad_single_process(config, this_group_id, this_group, model, torch_utils)
 
 
@@ -94,11 +87,7 @@ def bulk_vad_single_process(config, group_idx, audio_files, model, torch_utils):
         print(f"Audio file total duration: {audio_file_duration} seconds")
 
         process_in_segments = config["segment_audio"]
-        segment_length_seconds = (
-            config["audio_segment_length_s"]
-            if process_in_segments
-            else audio_file_duration
-        )
+        segment_length_seconds = config["audio_segment_length_s"] if process_in_segments else audio_file_duration
         segment_length_frames = segment_length_seconds * native_sample_rate
 
         next_segment_start_frame = 0
@@ -113,9 +102,7 @@ def bulk_vad_single_process(config, group_idx, audio_files, model, torch_utils):
             )
 
             # Load the data for the processed segment
-            frames_to_load_for_segment = (
-                next_segment_end_frame - next_segment_start_frame
-            )
+            frames_to_load_for_segment = next_segment_end_frame - next_segment_start_frame
             wav, sr = torchaudio.load(
                 audio_file,
                 frame_offset=next_segment_start_frame,
@@ -127,9 +114,7 @@ def bulk_vad_single_process(config, group_idx, audio_files, model, torch_utils):
 
             if sr != SAMPLING_RATE:
                 try:
-                    transform = torchaudio.transforms.Resample(
-                        orig_freq=sr, new_freq=SAMPLING_RATE
-                    )
+                    transform = torchaudio.transforms.Resample(orig_freq=sr, new_freq=SAMPLING_RATE)
                 except Exception as e:
                     print(e)
                     raise e
@@ -165,27 +150,16 @@ def bulk_vad_single_process(config, group_idx, audio_files, model, torch_utils):
             is_last_segment = next_segment_end_frame >= total_audio_frames
             # We set the next end frame now - so if next start needs to move back
             # to perform an overlap - we will still reach forward enough to see new data
-            next_segment_end_frame = min(
-                next_segment_start_frame + segment_length_frames, total_audio_frames
-            )
+            next_segment_end_frame = min(next_segment_start_frame + segment_length_frames, total_audio_frames)
 
             if len(speech_timestamps) > 0 and not is_last_segment:
                 last_found_speech = speech_timestamps[-1]
                 last_found_speech_end_seconds = last_found_speech["end"]
-                last_found_speech_end_time_to_segment_end = (
-                    time_at_segment_end - last_found_speech_end_seconds
-                )
-                if (
-                    last_found_speech_end_time_to_segment_end
-                    < audio_overlap_detection_threshold_seconds
-                ):
+                last_found_speech_end_time_to_segment_end = time_at_segment_end - last_found_speech_end_seconds
+                if last_found_speech_end_time_to_segment_end < audio_overlap_detection_threshold_seconds:
                     last_found_speech_start_seconds = last_found_speech["start"]
-                    last_found_speech_start_time_to_segment_end = (
-                        time_at_segment_end - last_found_speech_start_seconds
-                    )
-                    frames_to_overlap = (
-                        last_found_speech_start_time_to_segment_end * native_sample_rate
-                    )
+                    last_found_speech_start_time_to_segment_end = time_at_segment_end - last_found_speech_start_seconds
+                    frames_to_overlap = last_found_speech_start_time_to_segment_end * native_sample_rate
                     next_segment_start_frame -= frames_to_overlap
                     # remove the last speeach timestamp from the list
                     # since it will be included in the next segment
@@ -195,9 +169,7 @@ def bulk_vad_single_process(config, group_idx, audio_files, model, torch_utils):
 
         pathlib.Path(target_dir).mkdir(parents=True, exist_ok=True)
 
-        canonical_splits = [
-            (split["start"], split["end"]) for split in all_speech_timestamps
-        ]
+        canonical_splits = [(split["start"], split["end"]) for split in all_speech_timestamps]
 
         store_splits(audio_file, canonical_splits, target_dir)
 
@@ -219,9 +191,7 @@ def store_splits(filename, splits, target_dir):
         (start, end) = split
 
         escaped_target_dir = target_dir.as_posix().replace('"', '\\"')
-        ffmpeg_cmd += (
-            f' -vn -c copy -ss {start} -to {end} "{escaped_target_dir}/{idx}.mp3"'
-        )
+        ffmpeg_cmd += f' -vn -c copy -ss {start} -to {end} "{escaped_target_dir}/{idx}.mp3"'
 
         elems += 1
 
@@ -260,9 +230,7 @@ if __name__ == "__main__":
         required=True,
         help="The directory where splitted audios will be stored.",
     )
-    parser.add_argument(
-        "--jobs", type=int, required=False, default=3, help="Allow N jobs at once."
-    )
+    parser.add_argument("--jobs", type=int, required=False, default=3, help="Allow N jobs at once.")
     parser.add_argument(
         "--force-reprocess",
         required=False,
