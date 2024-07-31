@@ -1,6 +1,7 @@
 import argparse
 import base64
 from enum import Enum
+from http import HTTPStatus
 import io
 import os
 from threading import Semaphore
@@ -50,13 +51,13 @@ def transcribe_audio():
                 "timestamp_granularities[]"
             )
     except Exception as e:
-        return str(e), 400
+        return str(e), HTTPStatus.BAD_REQUEST
 
     if not in_flight_semaphore.acquire(blocking=False):
         return (
             jsonify({"error": "Too many tasks in flight"}),
-            429,
-        )  # HTTP 429 Too Many Requests
+            HTTPStatus.TOO_MANY_REQUESTS,
+        )
 
     try:
         # Process the task
@@ -80,13 +81,17 @@ def transcribe_audio():
                     segments, transcription_info, request_data.response_format
                 )
                 if request_data.response_format == ResponseFormat.TEXT:
-                    return response, 200, {"Content-Type": "text/plain"}
+                    return response, HTTPStatus.OK, {"Content-Type": "text/plain"}
 
                 response_json = response.model_dump_json()
-                return response_json, 200, {"Content-Type": "application/json"}
+                return (
+                    response_json,
+                    HTTPStatus.OK,
+                    {"Content-Type": "application/json"},
+                )
 
             except Exception as e:
-                return jsonify({"error": str(e)}), 500
+                return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
 
             finally:
                 if model is not None:
@@ -101,8 +106,8 @@ def execute_task():
     if not in_flight_semaphore.acquire(blocking=False):
         return (
             jsonify({"error": "Too many tasks in flight"}),
-            429,
-        )  # HTTP 429 Too Many Requests
+            HTTPStatus.TOO_MANY_REQUESTS,
+        )
 
     try:
         # Extract task details
