@@ -127,7 +127,7 @@ class TranscriptionVerboseJsonResponse(BaseModel):
 class CreateTranscriptionRequest(BaseModel):
     file: bytes = Field(
         ...,
-        description="The audio file object (not file name) to transcribe, in one of these formats: flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, or webm.",
+        description="The audio file object (not file name) to transcribe, in one of the supported ffmpeg source format.",
     )
     model: str = Field(
         ...,
