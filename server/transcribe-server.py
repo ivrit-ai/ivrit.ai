@@ -101,33 +101,6 @@ def transcribe_audio():
         in_flight_semaphore.release()
 
 
-@app.route("/execute", methods=["POST"])
-def execute_task():
-    if not in_flight_semaphore.acquire(blocking=False):
-        return (
-            jsonify({"error": "Too many tasks in flight"}),
-            HTTPStatus.TOO_MANY_REQUESTS,
-        )
-
-    try:
-        # Extract task details
-        task = request.json
-        task_type = task.get("type")
-        data = task.get("data")
-        token = task.get("token")
-
-        # Verify token for security (optional, but recommended)
-
-        # Process the task
-        with task_semaphore:
-            result = process_task(task_type, data)
-    finally:
-        in_flight_semaphore.release()
-
-    # Return the result
-    return jsonify({"result": result})
-
-
 def process_task(task_type, data):
     # Implement your task processing logic here
     # For example, execute Python code based on task_type and data
