@@ -360,7 +360,7 @@ def align_split(
         is_fallback = True
 
     if not is_fallback:
-        qury_embedding = encode_text_stream(
+        query_embedding = encode_text_stream(
             split_qry_text, args.text_hist_window_size, char_dict, char_dict_weights
         )
         ref_embedding = encode_text_stream(
@@ -372,7 +372,7 @@ def align_split(
 
         # Match query onto reference
         alignment = dtw(
-            qury_embedding,
+            query_embedding,
             ref_embedding,
             keep_internals=False,
             dist_method="cosine",
@@ -399,7 +399,7 @@ def align_split(
             is_fallback = True
         else:
             final_alignment = dtw(
-                qury_embedding,
+                query_embedding,
                 ref_embedding,
                 keep_internals=True,
                 dist_method="correlation",
