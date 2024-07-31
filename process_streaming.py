@@ -4,13 +4,11 @@ import argparse
 import json
 import os
 import pathlib
+import subprocess
 
 import torch
-import torchaudio
 from torch.multiprocessing import Pool
 import torch.multiprocessing.spawn
-import torch.multiprocessing.spawn
-from tqdm import tqdm
 
 import utils
 
@@ -21,6 +19,67 @@ import utils
 torch.set_num_threads(1)
 
 SAMPLING_RATE = 16000
+
+
+def parse_audio_info(audio_info):
+    if audio_info is not None and "streams" in audio_info:
+        for stream in audio_info["streams"]:
+            if stream["codec_type"] == "audio":
+                sample_rate = int(stream["sample_rate"])
+                channels = int(stream["channels"])
+                duration = float(stream["duration"])
+                return {"sample_rate": sample_rate, "channels": channels, "duration": duration}
+    return None
+
+
+def get_audio_properties(input_file):
+    # Run ffprobe to get audio properties in JSON format
+    cmd = ["ffprobe", "-v", "error", "-print_format", "json", "-show_streams", "-select_streams", "a", input_file]
+    result = subprocess.run(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    output = result.stdout
+
+    # Parse the JSON output
+    info = None
+    try:
+        raw_info = json.loads(output)
+        info = parse_audio_info(raw_info)
+    except:
+        print("Warning - Unable to probe input audio source properties...")
+        pass
+
+    return info
+
+
+def should_transcode(audio_info):
+    return (
+        audio_info is None  # Cannot detect audio info
+        or audio_info["channels"] > 1  # Not mono
+        or audio_info["sample_rate"] != SAMPLING_RATE  # Wrong sampling rate
+    )
+
+
+def transcode_audio(input_file, output_file):
+    cmd = ["ffmpeg", "-y", "-i", input_file, "-c:a", "libmp3lame", "-q:a", "2", "-ac", "1", "-ar", "16000", output_file]
+    subprocess.run(cmd)
+
+
+def copy_audio(input_file, output_file):
+    cmd = ["ffmpeg", "-y", "-i", input_file, "-c", "copy", output_file]
+    subprocess.run(cmd)
+
+
+def prepare_audio_for_processing(source_filename, output_filename):
+    audio_info = get_audio_properties(source_filename)
+
+    if not output_filename.is_file():
+        if should_transcode(audio_info):
+            print("Transcoding audio to expected processing format")
+            transcode_audio(source_filename, output_filename)
+        else:
+            print("Copying audio for processing")
+            copy_audio(source_filename, output_filename)
+
+    return audio_info
 
 
 def bulk_vad(args):
@@ -54,13 +113,8 @@ def invoke_processing_group(this_group_id: int, this_group: list, config):
     bulk_vad_single_process(config, this_group_id, this_group, model, torch_utils)
 
 
-# How close a speech needs to be to the end of a segment to be considered
-# as potentially overlapping with the next segment.
-audio_overlap_detection_threshold_seconds = 10
-
-
 def bulk_vad_single_process(config, group_idx, audio_files, model, torch_utils):
-    (get_speech_timestamps, _, _, _, _) = torch_utils
+    (get_speech_timestamps, _, read_audio, _, _) = torch_utils
 
     for idx, audio_file in enumerate(audio_files):
         print(f"Processing group {group_idx}, file #{idx}: {audio_file}")
@@ -80,96 +134,34 @@ def bulk_vad_single_process(config, group_idx, audio_files, model, torch_utils):
         except:
             pass
 
-        audio_file_info = torchaudio.info(audio_file)
-        total_audio_frames = audio_file_info.num_frames
-        native_sample_rate = audio_file_info.sample_rate
-        audio_file_duration = total_audio_frames // native_sample_rate
-        print(f"Audio file total duration: {audio_file_duration} seconds")
-
-        process_in_segments = config["segment_audio"]
-        segment_length_seconds = config["audio_segment_length_s"] if process_in_segments else audio_file_duration
-        segment_length_frames = segment_length_seconds * native_sample_rate
-
-        next_segment_start_frame = 0
-        next_segment_end_frame = next_segment_start_frame + segment_length_frames
-
-        all_speech_timestamps = []
-        while next_segment_start_frame < total_audio_frames:
-            time_at_segment_start = next_segment_start_frame / native_sample_rate
-            time_at_segment_end = next_segment_end_frame / native_sample_rate
-            print(
-                f"Processing segment starting at {time_at_segment_start} seconds ending at {time_at_segment_end} seconds"
-            )
-
-            # Load the data for the processed segment
-            frames_to_load_for_segment = next_segment_end_frame - next_segment_start_frame
-            wav, sr = torchaudio.load(
-                audio_file,
-                frame_offset=next_segment_start_frame,
-                num_frames=frames_to_load_for_segment,
-            )
-
-            if wav.size(0) > 1:
-                wav = wav.mean(dim=0, keepdim=True)
-
-            if sr != SAMPLING_RATE:
-                try:
-                    transform = torchaudio.transforms.Resample(orig_freq=sr, new_freq=SAMPLING_RATE)
-                except Exception as e:
-                    print(e)
-                    raise e
-                wav = transform(wav.clone().detach())
-                sr = SAMPLING_RATE
-
-            speech_timestamps = get_speech_timestamps(
-                wav,
-                model,
-                sampling_rate=SAMPLING_RATE,
-                min_speech_duration_ms=config["min_speech_duration_ms"],
-                max_speech_duration_s=config["max_speech_duration_s"],
-                min_silence_duration_ms=config["min_silence_duration_ms"],
-                speech_pad_ms=config["speech_pad_ms"],
-                threshold=config["speech_threshold"],
-                return_seconds=True,
-            )
-
-            # rebase timestamps to absolute start of audio file
-            speech_timestamps = [
-                {
-                    "start": s["start"] + time_at_segment_start,
-                    "end": s["end"] + time_at_segment_start,
-                }
-                for s in speech_timestamps
-            ]
-
-            # If this segment had speech parts within it - the last segment
-            # might overflow onto the next segment.
-            # we will load the next segment with overlap to this one to make sure we capture
-            # it's entirety
-            next_segment_start_frame += frames_to_load_for_segment
-            is_last_segment = next_segment_end_frame >= total_audio_frames
-            # We set the next end frame now - so if next start needs to move back
-            # to perform an overlap - we will still reach forward enough to see new data
-            next_segment_end_frame = min(next_segment_start_frame + segment_length_frames, total_audio_frames)
-
-            if len(speech_timestamps) > 0 and not is_last_segment:
-                last_found_speech = speech_timestamps[-1]
-                last_found_speech_end_seconds = last_found_speech["end"]
-                last_found_speech_end_time_to_segment_end = time_at_segment_end - last_found_speech_end_seconds
-                if last_found_speech_end_time_to_segment_end < audio_overlap_detection_threshold_seconds:
-                    last_found_speech_start_seconds = last_found_speech["start"]
-                    last_found_speech_start_time_to_segment_end = time_at_segment_end - last_found_speech_start_seconds
-                    frames_to_overlap = last_found_speech_start_time_to_segment_end * native_sample_rate
-                    next_segment_start_frame -= frames_to_overlap
-                    # remove the last speeach timestamp from the list
-                    # since it will be included in the next segment
-                    speech_timestamps = speech_timestamps[:-1]
-
-            all_speech_timestamps.extend(speech_timestamps)
-
         pathlib.Path(target_dir).mkdir(parents=True, exist_ok=True)
 
-        canonical_splits = [(split["start"], split["end"]) for split in all_speech_timestamps]
+        audio_file_in_processing_format = target_dir / "full.mp3"
+        audio_info = prepare_audio_for_processing(audio_file, audio_file_in_processing_format)
+        if audio_info is not None:
+            print(f"Audio input duration: {audio_info['duration']} secs.")
+            audio_file = str(audio_file_in_processing_format)
+        else:
+            # this should not happen unless ffpeobe somehow fails to identify
+            # the input audio source properties
+            print("Warning - Skipping audio format preperation - Working directly with the source")
+
+        data = read_audio(audio_file, sampling_rate=SAMPLING_RATE)
+
+        speech_timestamps = get_speech_timestamps(
+            data,
+            model,
+            sampling_rate=SAMPLING_RATE,
+            min_speech_duration_ms=config["min_speech_duration_ms"],
+            max_speech_duration_s=config["max_speech_duration_s"],
+            min_silence_duration_ms=config["min_silence_duration_ms"],
+            speech_pad_ms=config["speech_pad_ms"],
+            threshold=config["speech_threshold"],
+        )
+
+        canonical_splits = [
+            (split["start"] / SAMPLING_RATE, split["end"] / SAMPLING_RATE) for split in speech_timestamps
+        ]
 
         store_splits(audio_file, canonical_splits, target_dir)
 
@@ -236,19 +228,6 @@ if __name__ == "__main__":
         required=False,
         action="store_true",
         help="Force processing even if already done",
-    )
-    parser.add_argument(
-        "--process-audio-in-segments",
-        required=False,
-        action="store_true",
-        help="Process audio files in segments and not in full",
-    )
-    parser.add_argument(
-        "--audio_segment_length_s",
-        type=int,
-        required=False,
-        default=1800,
-        help="Length of audio segments to split by (reduce memory overhead)",
     )
     parser.add_argument(
         "--min_speech_duration_ms",
