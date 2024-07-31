@@ -4,7 +4,7 @@ import argparse
 import json
 import pathlib
 
-import utils
+from import utils
 
 def collect_statistics(args):
     # Iterate over each root directory

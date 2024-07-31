@@ -1,6 +1,9 @@
 import re
 import chardet
 
+import webvtt
+from datetime import timedelta
+
 def detect_encoding(file_path):
     with open(file_path, 'rb') as f:
         result = chardet.detect(f.read())
@@ -49,3 +52,26 @@ def parse_subcap(file_path):
                 })
     
     return subtitles
+
+def seconds_to_vtt_timestamp(seconds):
+    td = timedelta(seconds=seconds)
+    total_seconds = int(td.total_seconds())
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    milliseconds = int(td.microseconds / 1000)
+    return f"{hours:02}:{minutes:02}:{seconds:02}.{milliseconds:03}"
+
+def subcap_to_vtt(src, dest):
+    subtitles = parse_subcap(src)
+
+    vtt = webvtt.WebVTT()
+
+    for subtitle in subtitles:
+        start_time = seconds_to_vtt_timestamp(subtitle['start_time'])
+        end_time = seconds_to_vtt_timestamp(subtitle['end_time'])
+        caption = webvtt.Caption(start_time, end_time, subtitle['text'])
+        vtt.captions.append(caption)
+
+    vtt.save(dest)
+

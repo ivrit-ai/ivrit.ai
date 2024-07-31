@@ -9,7 +9,7 @@ import sys
 import asyncio
 import aiohttp
 
-import utils
+from utils import utils
 
 NUM_ELEMENTS_PER_BATCH = 10
 
