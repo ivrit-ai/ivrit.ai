@@ -413,6 +413,7 @@ def align_split(
         is_fallback = True
 
     return {
+        "split_idx": split_transcript["split_idx"],
         "base": split_qry_text,
         "reference": ref_text_around_split,
         "aligned": final_snippet,
