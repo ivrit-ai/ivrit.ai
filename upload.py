@@ -5,7 +5,7 @@ import json
 import pathlib
 
 import datasets
-import utils
+from utils import utils
 
 import mutagen.mp3
 

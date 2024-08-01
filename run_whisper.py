@@ -74,6 +74,14 @@ def initialize_model(engine, model_path, tuned_model_path):
 
         return transcribe 
 
+    if engine == 'faster-whisper':
+        model = faster_whisper.WhisperModel(model_path, compute_type='float32')
+
+        def transcribe(filename):
+            return transcribe_faster_whisper(model, filename)
+
+        return transcribe
+
 def copy_hf_model_weights_to_openai_model_weights(tuned_model, model):
     dic_parameter_mapping = dict()
 
@@ -145,6 +153,14 @@ def copy_hf_model_weights_to_openai_model_weights(tuned_model, model):
 
 def transcribe_openai_whisper(model, filename):
     return model.transcribe(filename, language='he', beam_size=5, best_of=5)['text']
+
+def transcribe_faster_whisper(model, filename):
+    texts = []
+    segs, dummy = model.transcribe(filename, language='he')
+    for s in segs:
+        texts.append(s.text)
+
+    return ' '.join(texts)
 
 if __name__ == '__main__':
     # Define an argument parser

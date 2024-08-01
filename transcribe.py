@@ -10,7 +10,7 @@ from openai import AsyncOpenAI
 from openai.types.audio import Transcription
 import pandas as pd
 
-import utils
+from utils import utils
 
 
 def map_transcription_response_to_result(transcription: Transcription):

@@ -9,27 +9,30 @@ import tempfile
 
 import datasets
 import pydub
-import subcap
-import utils
+from utils import utils
+import webvtt
 
 MAX_SEGMENT_DURATION = 29.9
 
+def vtt_time_to_seconds(timestamp):
+    return (timestamp.hours * 3600 + timestamp.minutes * 60 + timestamp.seconds + timestamp.milliseconds * 0.001)
+
 def split_sources(root_dir, target_dir):
-    sources = utils.find_files([root_dir], [], ['.mp3', '.mp4', '.wmv'])
+    sources = utils.find_files([root_dir], [], ['.vtt'])
 
     subtitled_duration = 0
     skipped_duration = 0
 
     for idx, s in enumerate(sources):
         #print(f'{idx}/{len(sources)}: {s}')
-        media_file = pathlib.Path(s)        
-        subcap_file = pathlib.Path(f'{media_file.parent / media_file.stem}_subCap.txt')
+        vtt_file = pathlib.Path(s) 
+        media_file = pathlib.Path(f'{vtt_file.parent / vtt_file.stem}.mp3')
 
         #duration = pydub.AudioSegment.from_file(media_file).duration_seconds
         duration = 0
 
-        if not subcap_file.exists():
-            print(f'Error: subcap file does not exist; media_file={media_file} subcap_file={subcap_file}')
+        if not media_file.exists():
+            print(f'Error: media file does not exist; media_file={media_file} vtt_file={vtt_file}')
             skipped_duration += duration
 
             continue
@@ -38,57 +41,62 @@ def split_sources(root_dir, target_dir):
 
         dest_dir = pathlib.Path(target_dir) / (media_file.parent / media_file.stem).relative_to(root_dir)
 
-        split_media_with_subcaps(media_file, subcap_file, dest_dir) 
+        split_media_with_subcaps(media_file, vtt_file, dest_dir) 
  
 
     print(f'Subtitled: {subtitled_duration}')
     print(f'Skipped: {skipped_duration}')
 
-def split_media_with_subcaps(media_file, subcap_file, dest_dir):
+def split_media_with_subcaps(media_file, vtt_file, dest_dir):
     desc_file = dest_dir / 'desc.json'
     if desc_file.exists():
         return
 
+    print(f'Processing {vtt_file}...')
+
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     mf = pydub.AudioSegment.from_file(media_file)
-    subcaps = subcap.parse_subcap(subcap_file)
+    caps = webvtt.read_buffer(open(vtt_file))
 
-    if len(subcaps) == 0:
+    if len(caps) < 3:
         return
 
-    merged_subcaps = []
+    caps = caps[0:len(caps) - 1]
 
-    curr_start_seg = subcaps[0]
-    curr_end_seg = subcaps[0]
-    texts = [curr_start_seg['text']]
+    merged_caps = []
 
-    for segment in subcaps[1:]:
-        if segment['end_time'] - curr_start_seg['start_time'] < MAX_SEGMENT_DURATION:
+    curr_start_seg = caps[0]
+    curr_end_seg = caps[0]
+    texts = [curr_start_seg.text.replace('\n', ' ')]
+
+    for segment in caps[1:]:
+        start_time = vtt_time_to_seconds(curr_start_seg.start_time)
+        end_time = vtt_time_to_seconds(segment.end_time)
+        if end_time - start_time < MAX_SEGMENT_DURATION:
             curr_end_seg = segment
-            texts.append(segment['text'])
+            texts.append(segment.text.replace('\n', ' '))
 
             continue
 
-        merged_subcap = { 'start_time' : curr_start_seg['start_time'],
-                          'end_time' : curr_end_seg['end_time'],
-                          'text' : ' '.join(texts) }
-        merged_subcaps.append(merged_subcap)
+        merged_cap = { 'start_time' : start_time,
+                       'end_time' : vtt_time_to_seconds(curr_end_seg.end_time),
+                       'text' : ' '.join(texts) }
+        merged_caps.append(merged_cap)
 
         curr_start_seg = segment
         curr_end_seg = segment
-        texts = [curr_start_seg['text']] 
+        texts = [curr_start_seg.text.replace('\n', ' ')] 
 
+    merged_cap = { 'start_time' : start_time,
+                   'end_time' : vtt_time_to_seconds(curr_end_seg.end_time),
+                   'text' : ' '.join(texts) }
+    merged_caps.append(merged_cap)
 
-    merged_subcap = { 'start_time' : curr_start_seg['start_time'],
-                      'end_time' : curr_end_seg['end_time'],
-                      'text' : ' '.join(texts) }
-    merged_subcaps.append(merged_subcap)
-
-    for idx, segment in enumerate(merged_subcaps):
+    for idx, segment in enumerate(merged_caps):
         mf[int(segment['start_time']*1000):int(segment['end_time']*1000)].export(f'{dest_dir}/{idx}.mp3', format='mp3', bitrate='16k')
 
-    json.dump(merged_subcaps, open(desc_file, 'w'))
+    json.dump(merged_caps, open(desc_file, 'w'))
 
 
 def generate_dataset(ds_name, splits_dir):

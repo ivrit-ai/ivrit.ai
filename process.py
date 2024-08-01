@@ -9,7 +9,7 @@ import sys
 import torch
 import torchaudio
 
-import utils
+from utils import utils
 
 # Using more than 1 thread appears to actually make VAD slower.
 # Using a single thread, and forking to run multiple processes.

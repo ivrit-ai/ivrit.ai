@@ -5,7 +5,7 @@ import pathlib
 import mutagen.mp3
 import pydub
 
-import utils
+from utils import utils
 
 def calculate_total_length(args):
     audio_files = utils.find_files(args.root_dir, args.skip_dir, ['.mp3', '.m4a'])
