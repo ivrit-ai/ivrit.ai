@@ -10,7 +10,7 @@ import torch
 from torch.multiprocessing import Pool
 import torch.multiprocessing.spawn
 
-import utils
+from utils import utils
 
 # Using more than 1 thread appears to actually make VAD slower.
 # Using a single thread, and forking to run multiple processes.
@@ -71,13 +71,12 @@ def copy_audio(input_file, output_file):
 def prepare_audio_for_processing(source_filename, output_filename):
     audio_info = get_audio_properties(source_filename)
 
-    if not output_filename.is_file():
-        if should_transcode(audio_info):
-            print("Transcoding audio to expected processing format")
-            transcode_audio(source_filename, output_filename)
-        else:
-            print("Copying audio for processing")
-            copy_audio(source_filename, output_filename)
+    if should_transcode(audio_info):
+        print("Transcoding audio to expected processing format")
+        transcode_audio(source_filename, output_filename)
+    else:
+        print("Copying audio for processing")
+        copy_audio(source_filename, output_filename)
 
     return audio_info
 
@@ -92,8 +91,6 @@ def bulk_vad(args):
     vad_process_config = {
         "target_dir": args.target_dir,
         "force_reprocess": args.force_reprocess,
-        "segment_audio": args.process_audio_in_segments,
-        "audio_segment_length_s": args.audio_segment_length_s,
         "min_speech_duration_ms": args.min_speech_duration_ms,
         "max_speech_duration_s": args.max_speech_duration_s,
         "min_silence_duration_ms": args.min_silence_duration_ms,
@@ -136,17 +133,17 @@ def bulk_vad_single_process(config, group_idx, audio_files, model, torch_utils):
 
         pathlib.Path(target_dir).mkdir(parents=True, exist_ok=True)
 
-        audio_file_in_processing_format = target_dir / "full.mp3"
-        audio_info = prepare_audio_for_processing(audio_file, audio_file_in_processing_format)
+        audio_file_in_vad_ready_format = target_dir / f"full_mono_{SAMPLING_RATE}.mp3"
+        audio_info = prepare_audio_for_processing(audio_file, audio_file_in_vad_ready_format)
         if audio_info is not None:
             print(f"Audio input duration: {audio_info['duration']} secs.")
-            audio_file = str(audio_file_in_processing_format)
         else:
-            # this should not happen unless ffpeobe somehow fails to identify
+            # this should not happen unless ffprobe somehow fails to identify
             # the input audio source properties
-            print("Warning - Skipping audio format preperation - Working directly with the source")
+            audio_file_in_vad_ready_format = audio_file
+            print("Warning - Skipping audio format preparation - Working directly with the source")
 
-        data = read_audio(audio_file, sampling_rate=SAMPLING_RATE)
+        data = read_audio(audio_file_in_vad_ready_format, sampling_rate=SAMPLING_RATE)
 
         speech_timestamps = get_speech_timestamps(
             data,
