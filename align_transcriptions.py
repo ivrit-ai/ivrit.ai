@@ -74,6 +74,45 @@ def generate_transcription_character_dictionary(
     return dictionary, dict_weights
 
 
+def find_closest_search_sorted(array: np.ndarray, value: float, side: str = "left") -> int:
+    """
+    Find the index of the closest value in a sorted ascending array using binary search.
+
+    This function leverages the fact that the array is sorted to achieve a more efficient
+    search with logarithmic time complexity, O(log n). It uses numpy's searchsorted method
+    to find the position where the value should be inserted to maintain order and then
+    determines the closest value by comparing the nearest neighbors.
+
+    Parameters:
+    array (np.ndarray): A sorted (ascending) numpy array to search in.
+    value (float): The value to find the closest match for in the array.
+    side  (str): Which side to return if the value is not in the array. Default is "left".
+
+    Returns:
+    int: The index of the closest value in the array.
+
+    Raises:
+    ValueError: If the input array is empty.
+    """
+    if array.size == 0:
+        raise ValueError("Array is empty.")
+
+    # Find the index where 'value' should be inserted to maintain order
+    idx = np.searchsorted(array, value, side=side)
+
+    # Handle edge cases where 'value' is out of the array bounds
+    if idx == 0:
+        return 0
+    elif idx == len(array):
+        return len(array) - 1
+    else:
+        # Check the closest value between idx-1 and idx
+        if abs(array[idx - 1] - value) <= abs(array[idx] - value):
+            return idx - 1
+        else:
+            return idx
+
+
 def get_transcript_for_time_range(
     text,
     ts_index,
@@ -85,8 +124,8 @@ def get_transcript_for_time_range(
     start_time_with_buffer = start_time - reference_text_neighborhood_size
     end_time_with_buffer = end_time + reference_text_neighborhood_size
 
-    start_range_idx = np.searchsorted(ts_index[0], start_time_with_buffer, side="left")
-    end_range_idx = np.searchsorted(ts_index[0], end_time_with_buffer, side="right")
+    start_range_idx = find_closest_search_sorted(ts_index[0], start_time_with_buffer, side="left")
+    end_range_idx = find_closest_search_sorted(ts_index[0], end_time_with_buffer, side="right")
 
     # Cannot get an inclusive time range from the index
     if end_range_idx - start_range_idx == 0:
