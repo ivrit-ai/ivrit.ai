@@ -46,6 +46,16 @@ To Get the HTTP Headers needed to run this script perform the following steps ma
 - Sorry.
 """
 
+HOW_TO_GET_PLENUM_ID = """
+To Get the Plenum ID needed to run this script perform the following steps manually:
+=======================================================================================
+- Open a new browser window
+- Navigate to plenum sittings site at: https://main.knesset.gov.il/Activity/plenum/Pages/Sessions.aspx
+- Look for sittings in the results table that have "Synced Protocol" available ("פרוטוקול מסונכרן" in Hebrew)
+- The link to the viewer page of the Synced Protocol has a "ProtocolID" query param
+- This number is the plenum ID this script expects
+"""
+
 extract_header_user_agent = re.compile(r"User-Agent: (.*)")
 extract_header_cookie = re.compile(r"Cookie: (.*)")
 
@@ -545,7 +555,7 @@ if __name__ == "__main__":
         action="append",
         type=str,
         required=False,  # Manually checked later
-        help="Ids of the recording to download, for the type requested.",
+        help=f"Ids of the recording to download, for the type requested.\t{HOW_TO_GET_PLENUM_ID}",
     )
     parser.add_argument(
         "--http-headers-file",
