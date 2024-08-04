@@ -80,9 +80,11 @@ HOW_TO_GET_PLENUM_ID = """
 To Get the Plenum ID needed to run this script perform the following steps manually:
 =======================================================================================
 - Open a new browser window
-- Navigate to plenum sittings site at: https://main.knesset.gov.il/Activity/plenum/Pages/Sessions.aspx
-- Look for sittings in the results table that have "Synced Protocol" available ("פרוטוקול מסונכרן" in Hebrew)
-- The link to the viewer page of the Synced Protocol has a "ProtocolID" query param
+- Navigate to plenum sittings site at: https://online.knesset.gov.il/app#/search
+- Set a date range and search
+- Look for results of a full sitting not a segment (מקטע)
+- Click the video preview link
+- In the newly opened page - look for the "ProtocolID" query param
 - This number is the plenum ID this script expects
 """
 
@@ -205,7 +207,9 @@ def extract_transcript_parts_from_elements(root_element: PageElement, context: d
                 prev_text_ts: pd.Timedelta = context["current_text_ts"]
                 time_at_idx: pd.Timedelta = pd.to_timedelta(context["time_pointers_arr_np"][text_ts_idx], "s")
 
-                if prev_text_ts is None or context["current_text_ts"] < time_at_idx:
+                if time_at_idx.total_seconds() > 0 and (  # Zero TS should not be used - it's garbage
+                    prev_text_ts is None or context["current_text_ts"] < time_at_idx
+                ):
                     context["current_text_ts"] = time_at_idx
                     extracted_list = [
                         TimeMarker(True, time_at_idx.total_seconds()),
@@ -670,6 +674,11 @@ def get_plenum_video_resource_url(
         )
         video_resource_url = json.loads(response.text)
 
+        if not video_resource_url:
+            raise ValueError(
+                f"Could not find video resource url for plenum recording {plenum_recording_id} - Is this a valid plenum ID?"
+            )
+
         # cache the url
         with open(plenum_id_target_folder / cached_video_source_url_file_name, "w") as f:
             f.write(video_resource_url)
@@ -1084,7 +1093,7 @@ if __name__ == "__main__":
         action="append",
         type=str,
         required=False,  # Manually checked later
-        help="Ids of the recording to download, for the type requested.",
+        help=f"Ids of the recording to download, for the type requested.\n{HOW_TO_GET_PLENUM_ID}",
     )
     parser.add_argument(
         "--http-headers-file",
