@@ -8,6 +8,7 @@ from dtw import dtw
 import numpy as np
 from scipy.special import softmax
 from scipy.spatial.distance import cosine
+import scipy.stats as stats
 from tqdm import tqdm
 from webvtt import WebVTT
 
@@ -74,6 +75,275 @@ def generate_transcription_character_dictionary(
     return dictionary, dict_weights
 
 
+def find_matching_locations_by_hist(
+    all_text: str,
+    query_text: str,
+    bottom_k: int,
+    ranges: list[tuple[int, int]],
+    stride_size: int,
+    dictionary: dict,
+    dict_weights: np.ndarray,
+) -> str:
+    window_size = len(query_text)
+    sample_hist = encode_text_window(query_text, dictionary, dict_weights)
+
+    searched_start_locs = []
+    start_locs_similarity_scores = []
+    for search_range in ranges:
+        start_loc, end_loc = search_range
+
+        # Go over all text splits - and check matches
+        window_locs_to_compare = np.arange(start_loc, end_loc - window_size, stride_size)
+
+        for window_start_loc in window_locs_to_compare:
+            timestampped_text_to_match_against = all_text[window_start_loc : window_start_loc + window_size]
+            searched_start_locs.append(window_start_loc)
+            start_locs_similarity_scores.append(
+                cosine(
+                    sample_hist,
+                    encode_text_window(timestampped_text_to_match_against, dictionary, dict_weights),
+                )
+            )
+
+    bottom_k_min_at = np.asarray(start_locs_similarity_scores).argsort()[:bottom_k]
+    return np.asarray(searched_start_locs)[bottom_k_min_at]
+
+
+def get_estimated_audio_lag(
+    reference_text: str,
+    reference_time_index: np.ndarray,
+    sample_split_text: str,
+    sample_split_start_at_time: float,
+    dictionary: dict,
+    dict_weights: np.ndarray,
+) -> float:
+    # First pass - Hone in on the potential match ranges
+    # With faster search but less accurate
+    max_window_size = 150
+    query_text = sample_split_text[:max_window_size]
+    top_matching_locs = find_matching_locations_by_hist(
+        reference_text,
+        query_text,
+        5,  # TODO - relative to ratio between total search area and query size
+        [[0, len(reference_text)]],
+        # about 1/3rd stride size is good enough for first pass (But not too small)
+        max(max_window_size // 3, 5),
+        dictionary,
+        dict_weights,
+    )
+
+    # Create ranges around each potential to search for more accurate matches
+    ranges_to_fine_search = []
+    for matched_loc in top_matching_locs:
+        new_range_start_loc = max(0, matched_loc - max_window_size * 2)
+        new_range_end_loc = min(len(reference_text), matched_loc + max_window_size * 3)
+
+        # If a range overlaps with the new range - merge them
+        merged = False
+        for idx, existing_range in enumerate(ranges_to_fine_search):
+            # If open is within an existing range
+            if new_range_start_loc > existing_range[0] and new_range_start_loc <= existing_range[1]:
+                # extend the end of this range with the right most one of the two ranges
+                ranges_to_fine_search[idx] = [
+                    existing_range[0],
+                    max(new_range_end_loc, existing_range[1]),
+                ]
+                merged = True
+
+            # If end is within an existing range
+            if new_range_end_loc >= existing_range[0] and new_range_end_loc < existing_range[1]:
+                # extend the start of this range with the left most one of the two ranges
+                ranges_to_fine_search[idx] = [
+                    min(new_range_start_loc, existing_range[0]),
+                    existing_range[1],
+                ]
+                merged = True
+
+            if merged:
+                break
+
+        if not merged:
+            ranges_to_fine_search.append([new_range_start_loc, new_range_end_loc])
+
+    # Perform a fine search on the ranges
+    fine_search_max_window_len = 250
+    query_text = sample_split_text[:fine_search_max_window_len]
+    top_matching_locs = find_matching_locations_by_hist(
+        reference_text,
+        query_text,
+        # Take the best one for the fine search (may need to improve this and consider disagreement between last K places)
+        1,
+        ranges_to_fine_search,
+        5,  # Search in small strides to get a good match accuracy
+        dictionary,
+        dict_weights,
+    )
+
+    match_window_start_loc = top_matching_locs[0]
+    transcript_approx_slice_indexes = (
+        np.argwhere(
+            np.logical_and(
+                reference_time_index[1] <= match_window_start_loc,
+                match_window_start_loc <= reference_time_index[2],
+            )
+        )
+        .transpose()
+        .flatten()
+    )
+    if transcript_approx_slice_indexes.size > 0:
+        transcript_approx_slice_first_idx = transcript_approx_slice_indexes[0]
+        # If we have a sample after this one - we can try and interpolate the timestamp
+        # relative to text matchong location within that sample
+        if transcript_approx_slice_first_idx < len(reference_time_index[1]) - 1:
+            relative_loc_into_slice = (
+                match_window_start_loc - reference_time_index[1][transcript_approx_slice_first_idx]
+            ) / (
+                reference_time_index[2][transcript_approx_slice_first_idx]
+                - reference_time_index[1][transcript_approx_slice_first_idx]
+            )
+            total_slice_time_length = (
+                reference_time_index[0][transcript_approx_slice_first_idx + 1]
+                - reference_time_index[0][transcript_approx_slice_first_idx]
+            )
+            relative_time_into_slice = relative_loc_into_slice * total_slice_time_length
+            transcript_approx_timestamp = (
+                reference_time_index[0][transcript_approx_slice_first_idx] + relative_time_into_slice
+            )
+        # or fallback to the time stamp of this last slice
+        else:
+            transcript_approx_timestamp = reference_time_index[0][transcript_approx_slice_first_idx]
+
+        sample_approx_timestamp = sample_split_start_at_time
+        estimated_audio_lag = transcript_approx_timestamp - sample_approx_timestamp
+        return estimated_audio_lag
+    else:
+        return None
+
+
+def get_confidence_interval(data, confidence=0.95):
+    n = len(data)
+    mean = np.mean(data)
+    std_err = stats.sem(data)
+    h = std_err * stats.t.ppf((1 + confidence) / 2.0, n - 1)
+    return mean - h, mean + h
+
+
+def is_confident_in_guess(samples, tolerance, confidence=0.95):
+    lower, upper = get_confidence_interval(samples, confidence)
+    return (upper - lower) <= tolerance
+
+
+initial_audio_lag__estimation_buffer_size_secs = 120
+guess_confidence_stop_criteria_confidence_interval = 0.95
+guess_confidence_stop_criteria_confidence_seconds = 8
+minimal_estimations_to_gather_for_guess = 5
+max_estimations_to_gather = 35  # Don't guess forever
+minimal_split_text_length_to_use = 25  # Balance accuracy and speed
+
+
+def guess_audio_lag_behind_reference_transcript(
+    output_folder: pathlib.Path,
+    reference_text: str,
+    reference_time_index: np.ndarray,
+    splits: list[dict],
+    transcripts_store: dict,
+    char_dict: dict[str, int],
+    char_dict_weights: np.ndarray,
+) -> float:
+    # Try and load from a JSON cache an alreafy guessed audio lag
+    align_cache_filename = output_folder / "align_cache.json"
+    align_cache = None
+    if align_cache_filename.exists():
+        with open(align_cache_filename, "r") as f:
+            align_cache = json.load(f)
+            if align_cache.get("audio_lag", None) is not None:
+                print(f"Using guessed audio lag of {align_cache['audio_lag']} seconds")
+                return align_cache["audio_lag"]
+
+    print("Guessing audio lag behind reference transcript")
+    available_samples_count = len(transcripts_store["transcripts"])
+    total_audio_recording_length_seconds = splits[-1][1]
+    total_transcription_length_seconds = np.max(reference_time_index[0])  # max ts
+    # If we assume audio and transcript end at the same time (seems to be about right)
+    # we could infer the expected mininal audio lag by looking at the difference.
+    # This is not accurate - but should allow a better way to filter out outliers due
+    # to bad sample matching cases
+    estimated_minimal_audio_lag = total_transcription_length_seconds - total_audio_recording_length_seconds
+    lower_audio_lag_limit = estimated_minimal_audio_lag - initial_audio_lag__estimation_buffer_size_secs
+    upper_audio_lag_limit = estimated_minimal_audio_lag + initial_audio_lag__estimation_buffer_size_secs
+    print(f"Considering lag Estimations in the range: {lower_audio_lag_limit:.2f} - {upper_audio_lag_limit:.2f} secs.")
+
+    estimated_lags = []
+    estimaged_lags_within_probable_range = None
+    print("Sampling until audio lag guess is acquired...")
+    while True:
+        split_id_to_sample = np.random.randint(0, available_samples_count, 1).squeeze()
+        split_transcript = None
+        for t_s in transcripts_store["transcripts"]:
+            # List is a shitty data structure for random access by id.
+            # reconsider using lists or at least create a lookup
+            if t_s["split_idx"] == split_id_to_sample:
+                split_transcript = t_s
+                break
+
+        if split_transcript is None:
+            # cannot find transcription for this split - move on
+            continue
+
+        ts_sample_split_segs = split_transcript["segments"]
+        sample_split_text = re.sub(r"[\s,.?]+", " ", "".join([seg["text"] for seg in ts_sample_split_segs]))
+        if len(sample_split_text) < minimal_split_text_length_to_use:
+            # Too short (text len wise) splits are skipped - they are too expensive and may not be specific enough
+            continue
+
+        sample_split_start_at_time = splits[split_id_to_sample][0]
+        estimated_lag = get_estimated_audio_lag(
+            reference_text,
+            reference_time_index,
+            sample_split_text,
+            sample_split_start_at_time,
+            char_dict,
+            char_dict_weights,
+        )
+        if estimated_lag is None:
+            # Unable to find a match for this split - try to move on to other splits
+            pass
+        else:
+            estimated_lags.append(estimated_lag)
+
+        estimaged_lags_within_probable_range = np.asarray(
+            [lag for lag in estimated_lags if lower_audio_lag_limit <= lag <= upper_audio_lag_limit]
+        )
+
+        if len(
+            estimaged_lags_within_probable_range
+        ) >= minimal_estimations_to_gather_for_guess and is_confident_in_guess(
+            estimaged_lags_within_probable_range,
+            guess_confidence_stop_criteria_confidence_seconds,
+            guess_confidence_stop_criteria_confidence_interval,
+        ):
+            print("Sampled enough to guess the time lag. Stopping.")
+            break
+
+        if len(estimated_lags) >= max_estimations_to_gather:
+            print("No more sampling allowed. Stopping.")
+            break
+
+    guessed_audio_lag = (
+        np.mean(estimaged_lags_within_probable_range)
+        if estimaged_lags_within_probable_range.size > 0
+        else estimated_minimal_audio_lag
+    )
+
+    # Store the gussed audio lag in the align cache file
+    if align_cache is None:
+        align_cache = {}
+    align_cache = {"audio_lag": guessed_audio_lag}
+    with open(align_cache_filename, "w") as f:
+        json.dump(align_cache, f)
+
+    return guessed_audio_lag
+
 def find_closest_search_sorted(array: np.ndarray, value: float, side: str = "left") -> int:
     """
     Find the index of the closest value in a sorted ascending array using binary search.
@@ -114,7 +384,7 @@ def find_closest_search_sorted(array: np.ndarray, value: float, side: str = "lef
 
 
 def get_transcript_for_time_range(
-    text,
+    text: str,
     ts_index,
     text_split_points,
     start_time,
@@ -323,6 +593,7 @@ def align_split(
     text_natural_split_points: np.ndarray,
     char_dict: dict[str, int],
     char_dict_weights: np.ndarray,
+    guessed_audio_lag: float,
     idx: int,
     split: dict,
     trans_store: dict,
@@ -331,7 +602,15 @@ def align_split(
         if idx != args.transcripts_split_id:
             return
 
+    # Audio times
     time_start_s, time_end_s = split
+    # Shift the audio times according to the guessed lag
+    # Lag is of audio behind transcript
+    # Positive - means audio is behind => TS are lower than they
+    # should be to match th reference text
+    # Thus - add the lag value to the audio times
+    time_start_s += guessed_audio_lag
+    time_end_s += guessed_audio_lag
     split_transcript = None
 
     # TODO: The list structure for lookup by a sub prop of a json element
@@ -437,9 +716,8 @@ def align_split(
 
 
 def align(args):
-    output_transcripts_file = (
-        pathlib.Path(args.transcripts_file).parent / f"{pathlib.Path(args.transcripts_file).stem}.aligned.json"
-    )
+    output_transcripts_folder = pathlib.Path(args.transcripts_file).parent
+    output_transcripts_file = output_transcripts_folder / f"{pathlib.Path(args.transcripts_file).stem}.aligned.json"
 
     # If output transcript file exists - no need to reprocess
     if output_transcripts_file.exists():
@@ -474,6 +752,17 @@ def align(args):
     # Go over all splits
     aligned_transcripts = []
 
+    guessed_audio_lag = guess_audio_lag_behind_reference_transcript(
+        output_transcripts_folder,
+        reference_text,
+        reference_time_index,
+        splits_desc["splits"],
+        trans_store,
+        char_dict,
+        char_dict_weights,
+    )
+    print(f"Guessed audio lag: {guessed_audio_lag}sec (how much audio is behind reference text)")
+
     if args.transcripts_split_id is not None:
         print(f"Processing specifically split {args.transcripts_split_id}")
     else:
@@ -487,6 +776,7 @@ def align(args):
             text_natural_split_points,
             char_dict,
             char_dict_weights,
+            guessed_audio_lag,
             idx,
             split,
             trans_store,

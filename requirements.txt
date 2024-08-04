@@ -27,3 +27,5 @@ webvtt-py
 scipy
 tqdm
 pydantic
+pyodata
+python-docx
