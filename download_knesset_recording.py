@@ -55,6 +55,7 @@ etype_missed_bookmark_text_pattern = re.compile(r"<< \S+ >>")
 cached_video_source_url_file_name = "cache.video.url"
 cached_transcript_html_file_name = "cache.transcript.html"
 cached_html_ts_map_file_name = "cache.htmltsmap.npy"
+cached_html_ts_map_cleaned_file_name = "cache.htmltsmap.cleaned.npy"
 cached_protocol_doc_source_url_file_name = "cache.protocol.doc.url"
 cached_protocol_doc_file_name = "cache.protocol.doc"
 cached_protocol_doc_xml_content_file_name = "cache.protocol.xml"
@@ -644,7 +645,16 @@ def cleanup_html_time_map_arr(time_map_arr: np.ndarray) -> np.ndarray:
         elif time_map_arr[ith + 1] - time_map_arr[ith] > max_forward_jump:  # Forward jump is too big - fix it
             # Skip the bad value and look forward a bit to get an estimate
             # of where the series continues
-            future_baseline = np.median(time_map_arr[ith + 2 : ith + 10 : 2])
+            future_lookup = time_map_arr[ith + 2 : ith + 10 : 2]
+            # Too close to the end?
+            if len(future_lookup) == 0:
+                # Fallback to any values we get looking forward
+                future_lookup = time_map_arr[ith + 2 :]
+            # Still no values? Can't really fix this jump - fake a value which is the max allowed jump
+            if len(future_lookup) == 0:
+                future_lookup = np.asarray([time_map_arr[ith] + max_forward_jump])
+
+            future_baseline = np.median(future_lookup)
             # If the next value is closer to the future baseline - use it
             # despite it being an abnormal jump - perhaps this jump is required.
             if abs(time_map_arr[ith + 1] - future_baseline) < abs(time_map_arr[ith] - future_baseline):
@@ -762,14 +772,20 @@ def get_html_ts_map(
         )
         html_ts_map_js_array = np.array(json.loads(node_id_timestamp_mapping_response.text))
 
-        print("Cleaning up the HTML-Timestamp mapping...")
-        html_ts_map_js_array = cleanup_html_time_map_arr(html_ts_map_js_array)
-
         # save a cached copy of the HTML TS map
         np.save(
             plenum_id_target_folder / cached_html_ts_map_file_name,
             html_ts_map_js_array,
         )
+
+    print("Cleaning up the HTML-Timestamp mapping...")
+    html_ts_map_js_array = cleanup_html_time_map_arr(html_ts_map_js_array)
+
+    # Save a version of the cleaned map as well for debug purposes
+    np.save(
+        plenum_id_target_folder / cached_html_ts_map_cleaned_file_name,
+        html_ts_map_js_array,
+    )
 
     return html_ts_map_js_array
 
@@ -923,8 +939,9 @@ def transcode_video_to_audio(
     id_target_folder: pathlib,
 ):
     if not pathlib.Path(id_target_folder / output_video_file_name).exists():
-        print("No video file exists - skipping audio transcoding.")
-        return
+        raise FileNotFoundError(
+            f"Video file {pathlib.Path(id_target_folder / output_video_file_name)} to transcode is missing"
+        )
 
     output_audio_file_name = f"{id}.mp3"
     if not pathlib.Path(target_folder / output_audio_file_name).exists():
@@ -986,10 +1003,9 @@ def download_plenum(
 
     if not skip_download_video_file:
         download_video_recording(plenum_id_target_folder, video_resource_url)
+        transcode_video_to_audio(id, plenum_target_folder, plenum_id_target_folder)
     else:
         print("Skipping video file download.")
-
-    transcode_video_to_audio(id, plenum_target_folder, plenum_id_target_folder)
 
     print(f"Download plenum {id} done.")
 
@@ -1036,10 +1052,9 @@ def download_committee_session(
 
     if not skip_download_video_file:
         download_video_mpeg_dash_stream(committee_id_target_folder, video_resource_url)
+        transcode_video_to_audio(session_id, committee_target_folder, committee_id_target_folder)
     else:
         print("Skipping video file download.")
-
-    transcode_video_to_audio(session_id, committee_target_folder, committee_id_target_folder)
 
     print(f"Download committee session {session_id} done.")
 
