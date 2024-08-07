@@ -939,8 +939,9 @@ def transcode_video_to_audio(
     id_target_folder: pathlib,
 ):
     if not pathlib.Path(id_target_folder / output_video_file_name).exists():
-        print("No video file exists - skipping audio transcoding.")
-        return
+        raise FileNotFoundError(
+            f"Video file {pathlib.Path(id_target_folder / output_video_file_name)} to transcode is missing"
+        )
 
     output_audio_file_name = f"{id}.mp3"
     if not pathlib.Path(target_folder / output_audio_file_name).exists():
@@ -1002,10 +1003,9 @@ def download_plenum(
 
     if not skip_download_video_file:
         download_video_recording(plenum_id_target_folder, video_resource_url)
+        transcode_video_to_audio(id, plenum_target_folder, plenum_id_target_folder)
     else:
         print("Skipping video file download.")
-
-    transcode_video_to_audio(id, plenum_target_folder, plenum_id_target_folder)
 
     print(f"Download plenum {id} done.")
 
@@ -1052,10 +1052,9 @@ def download_committee_session(
 
     if not skip_download_video_file:
         download_video_mpeg_dash_stream(committee_id_target_folder, video_resource_url)
+        transcode_video_to_audio(session_id, committee_target_folder, committee_id_target_folder)
     else:
         print("Skipping video file download.")
-
-    transcode_video_to_audio(session_id, committee_target_folder, committee_id_target_folder)
 
     print(f"Download committee session {session_id} done.")
 
