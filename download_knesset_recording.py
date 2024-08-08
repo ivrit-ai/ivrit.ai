@@ -5,7 +5,7 @@ import json
 import pathlib
 import re
 import subprocess
-from time import gmtime, strftime
+from time import gmtime, strftime, sleep
 from urllib.parse import urlparse, parse_qs
 
 from bs4 import BeautifulSoup, PageElement, NavigableString
@@ -795,9 +795,9 @@ def get_html_transcript(
     plenum_id_target_folder: pathlib.Path,
     plenum_recording_id: str,
 ):
-    # If a temp HTML traanscript file exists, use that
+    # If a temp HTML transcript file exists, use that
     if pathlib.Path(plenum_id_target_folder / cached_transcript_html_file_name).exists():
-        print("Reusing cached transcript HTML file from previouse run")
+        print("Reusing cached transcript HTML file from previous run")
         with open(plenum_id_target_folder / cached_transcript_html_file_name, "r") as transcript_html_file:
             html_transcript = transcript_html_file.read()
     else:
@@ -815,12 +815,34 @@ def get_html_transcript(
         for page_idx in range(page_count):
             print(f"Downloading transcript HTML content - page {page_idx + 1}")
 
-            page_content_response = requests.get(
-                f"{knesset_protocol_page_content_api_url}?sProtocolNum={plenum_recording_id}&pageNum={page_idx}",
-                headers=knesset_http_headers,
-            )
-            page_content = json.loads(page_content_response.text)
-            pages_content.append(page_content)
+            can_move_on = False
+            retries_allowed = 3
+            while not can_move_on:
+                retries_allowed -= 1
+                page_content_response = requests.get(
+                    f"{knesset_protocol_page_content_api_url}?sProtocolNum={plenum_recording_id}&pageNum={page_idx}",
+                    headers=knesset_http_headers,
+                )
+                try:
+                    page_content = json.loads(page_content_response.text)
+                    pages_content.append(page_content)
+                    can_move_on = True
+                except:
+                    if "(503)" in page_content_response.text:
+                        if retries_allowed > 0:
+                            print(
+                                f">> Got a 503 error, Probably blocked due to load. sleeping, and trying again... (Retries left: {retries_allowed})"
+                            )
+                            sleep(10)
+                        else:
+                            print(
+                                ">> Got a 503 error, Probably blocked due to load. Too many retries, Skipping this page."
+                            )
+                            can_move_on = True
+                    else:
+                        # Maybe some other problem. Let's just skip this page.
+                        print(">> Got an error while trying to load page content. Skipping this page.")
+                        can_move_on = True
 
         # Process all page contents into an output HTML snippet
         output_html_parts = [page_content.get("sContent") for page_content in pages_content]
