@@ -1,3 +1,4 @@
+backoff
 datasets
 faster-whisper
 flask
