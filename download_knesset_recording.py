@@ -822,14 +822,14 @@ def get_html_transcript_page(knesset_http_headers: dict, plenum_recording_id: st
         headers=knesset_http_headers,
     )
 
-    if "(503)" in page_content_response.text:
-        raise TooManyRequestsException()
-
     try:
         return json.loads(page_content_response.text)
     except:
-        print(f"Failed to parse page content for page {page_idx + 1} - skipping")
-        return None
+        if "(503)" in page_content_response.text:
+            raise TooManyRequestsException()
+        else:
+            print(f"Failed to parse page content for page {page_idx + 1} - skipping")
+            return None
 
 
 def get_html_transcript(
