@@ -23,13 +23,14 @@ from typing import Any, Dict, List, Union
 
 from peft import prepare_model_for_kbit_training, LoraConfig, PeftModel, LoraModel, LoraConfig, get_peft_model
 
-eval_dataset = load_dataset("ivrit-ai/audio-labeled", token='')
-dataset = load_dataset('', token='')
+eval_dataset = load_dataset("ivrit-ai/audio-labeled", token="")
+dataset = load_dataset("", token="")
 
 processor = WhisperProcessor.from_pretrained("openai/whisper-large-v2", language="hebrew", task="transcribe")
 
 sampling_rate = processor.feature_extractor.sampling_rate
 dataset = dataset.cast_column("audio", Audio(sampling_rate=sampling_rate))
+
 
 def prepare_dataset(example, text_column_name):
     try:
@@ -56,37 +57,34 @@ def prepare_dataset(example, text_column_name):
 
         return example
     except Exception as e:
-        print('Exception')
+        print("Exception")
         print(e)
         return None
 
 
-
 def prepare_dataset_sentence(example):
-    return prepare_dataset(example, 'sentence')
+    return prepare_dataset(example, "sentence")
+
 
 def prepare_dataset_text(example):
-    return prepare_dataset(example, 'text')
+    return prepare_dataset(example, "text")
 
 
-train_set = dataset['train']
-eval_set = eval_dataset['test'].select(range(16))
+train_set = dataset["train"]
+eval_set = eval_dataset["test"].select(range(16))
 
 train_set = train_set.map(prepare_dataset_sentence, remove_columns=train_set.column_names, num_proc=1)
 eval_set = eval_set.map(prepare_dataset_text, remove_columns=eval_set.column_names, num_proc=1)
+
 
 @dataclass
 class DataCollatorSpeechSeq2SeqWithPadding:
     processor: Any
 
-    def __call__(
-        self, features: List[Dict[str, Union[List[int], torch.Tensor]]]
-    ) -> Dict[str, torch.Tensor]:
+    def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
         # split inputs and labels since they have to be of different lengths and need different padding methods
         # first treat the audio inputs by simply returning torch tensors
-        input_features = [
-            {"input_features": feature["input_features"][0]} for feature in features
-        ]
+        input_features = [{"input_features": feature["input_features"][0]} for feature in features]
         batch = self.processor.feature_extractor.pad(input_features, return_tensors="pt")
 
         # get the tokenized label sequences
@@ -95,9 +93,7 @@ class DataCollatorSpeechSeq2SeqWithPadding:
         labels_batch = self.processor.tokenizer.pad(label_features, return_tensors="pt")
 
         # replace padding with -100 to ignore loss correctly
-        labels = labels_batch["input_ids"].masked_fill(
-            labels_batch.attention_mask.ne(1), -100
-        )
+        labels = labels_batch["input_ids"].masked_fill(labels_batch.attention_mask.ne(1), -100)
 
         # if bos token is appended in previous tokenization step,
         # cut bos token here as it's append later anyways
@@ -133,24 +129,17 @@ def compute_metrics(pred):
     pred_str_norm = [normalizer(pred) for pred in pred_str]
     label_str_norm = [normalizer(label) for label in label_str]
     # filtering step to only evaluate the samples that correspond to non-zero references:
-    pred_str_norm = [
-        pred_str_norm[i] for i in range(len(pred_str_norm)) if len(label_str_norm[i]) > 0
-    ]
-    label_str_norm = [
-        label_str_norm[i]
-        for i in range(len(label_str_norm))
-        if len(label_str_norm[i]) > 0
-    ]
+    pred_str_norm = [pred_str_norm[i] for i in range(len(pred_str_norm)) if len(label_str_norm[i]) > 0]
+    label_str_norm = [label_str_norm[i] for i in range(len(label_str_norm)) if len(label_str_norm[i]) > 0]
 
     wer = metric.compute(predictions=pred_str_norm, references=label_str_norm)
 
     return {"wer_ortho": wer_ortho, "wer": wer}
 
 
-
 model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-large-v2")
 
-USE_PEFT = False 
+USE_PEFT = False
 
 if USE_PEFT:
     model = prepare_model_for_kbit_training(model)
@@ -169,22 +158,21 @@ model.config.use_cache = False
 model.generate = partial(model.generate, language="hebrew", task="transcribe", use_cache=True)
 
 
-output_dir_trainer = 'whisper-large-yair'
-
+output_dir_trainer = "whisper-large-yair"
 
 
 training_args = Seq2SeqTrainingArguments(
-    output_dir = output_dir_trainer,
+    output_dir=output_dir_trainer,
     per_device_train_batch_size=8,
     gradient_accumulation_steps=2,  # increase by 2x for every 2x decrease in batch size
     learning_rate=1e-5,
     lr_scheduler_type="constant_with_warmup",
     warmup_ratio=0.1,
-#     warmup_steps=100,
-#     max_steps=2000,  # increase to 4000 if you have your own GPU or a Colab paid plan
-#     gradient_checkpointing=True,
-#     fp16=True,
-#     fp16_full_eval=True,
+    #     warmup_steps=100,
+    #     max_steps=2000,  # increase to 4000 if you have your own GPU or a Colab paid plan
+    #     gradient_checkpointing=True,
+    #     fp16=True,
+    #     fp16_full_eval=True,
     evaluation_strategy="epoch",
     save_strategy="epoch",
     num_train_epochs=10,
@@ -192,16 +180,15 @@ training_args = Seq2SeqTrainingArguments(
     per_device_eval_batch_size=16,
     predict_with_generate=True,
     generation_max_length=225,
-#     save_steps=250,
-#     eval_steps=250,
+    #     save_steps=250,
+    #     eval_steps=250,
     logging_strategy="epoch",
-    report_to='none',
+    report_to="none",
     load_best_model_at_end=True,
     metric_for_best_model="wer",
     greater_is_better=False,
     push_to_hub=False,
 )
-
 
 
 trainer = Seq2SeqTrainer(
@@ -214,7 +201,7 @@ trainer = Seq2SeqTrainer(
     tokenizer=processor,
 )
 
-print('Start training!')
+print("Start training!")
 trainer.train()
 
 
@@ -224,4 +211,3 @@ kwargs = {
     "tasks": "automatic-speech-recognition",
     "model_name": "ivrit-ai/large-v2-ivrit-13-20240603",
 }
-

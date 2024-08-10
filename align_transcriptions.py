@@ -344,6 +344,7 @@ def guess_audio_lag_behind_reference_transcript(
 
     return guessed_audio_lag
 
+
 def find_closest_search_sorted(array: np.ndarray, value: float, side: str = "left") -> int:
     """
     Find the index of the closest value in a sorted ascending array using binary search.

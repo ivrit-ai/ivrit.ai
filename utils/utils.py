@@ -2,6 +2,7 @@ import glob
 import os
 import pathlib
 
+
 def find_files(root_directories, skip, extensions):
     ret_files = []
 
@@ -14,7 +15,7 @@ def find_files(root_directories, skip, extensions):
 
             # Select all relevant files
             for ext in extensions:
-                for fname in glob.glob(f'{dir_name}/*{ext}'):
+                for fname in glob.glob(f"{dir_name}/*{ext}"):
                     ret_files.append(fname)
 
     return ret_files
