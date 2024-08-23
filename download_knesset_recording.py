@@ -5,9 +5,10 @@ import json
 import pathlib
 import re
 import subprocess
-from time import gmtime, strftime
+from time import gmtime, strftime, sleep
 from urllib.parse import urlparse, parse_qs
 
+import backoff
 from bs4 import BeautifulSoup, PageElement, NavigableString
 from docx import Document
 from docx.text.paragraph import Paragraph
@@ -790,14 +791,55 @@ def get_html_ts_map(
     return html_ts_map_js_array
 
 
+class TooManyRequestsException(Exception):
+    pass
+
+
+max_backoff_retries = 3
+
+
+@backoff.on_exception(
+    backoff.expo,
+    TooManyRequestsException,
+    base=2,
+    factor=5,
+    max_value=20,
+    max_tries=max_backoff_retries,
+    raise_on_giveup=False,
+    on_backoff=lambda details: print(
+        ">> Got a 503 error, Probably blocked due to load. sleeping, and trying again... (Retry {tries}/{max_backoff_retries})".format(
+            **details, max_backoff_retries=max_backoff_retries
+        )
+    ),
+    on_giveup=lambda details: print(
+        ">> Got a 503 error, Probably blocked due to load. Too many retries, Skipping this page."
+    ),
+)
+def get_html_transcript_page(knesset_http_headers: dict, plenum_recording_id: str, page_idx: int):
+    print(f"Downloading transcript HTML content - page {page_idx + 1}")
+    page_content_response = requests.get(
+        f"{knesset_protocol_page_content_api_url}?sProtocolNum={plenum_recording_id}&pageNum={page_idx}",
+        headers=knesset_http_headers,
+    )
+
+    try:
+        return json.loads(page_content_response.text)
+    except:
+        if "(503)" in page_content_response.text:
+            raise TooManyRequestsException()
+        else:
+            print(f"Failed to parse page content for page {page_idx + 1} - skipping")
+            return None
+
+
 def get_html_transcript(
     knesset_http_headers: dict,
     plenum_id_target_folder: pathlib.Path,
     plenum_recording_id: str,
 ):
-    # If a temp HTML traanscript file exists, use that
+    # If a temp HTML transcript file exists, use that
     if pathlib.Path(plenum_id_target_folder / cached_transcript_html_file_name).exists():
-        print("Reusing cached transcript HTML file from previouse run")
+        print("Reusing cached transcript HTML file from previous run")
         with open(plenum_id_target_folder / cached_transcript_html_file_name, "r") as transcript_html_file:
             html_transcript = transcript_html_file.read()
     else:
@@ -813,14 +855,9 @@ def get_html_transcript(
         pages_content = []
         print(f"Downloading {page_count} pages of transcript content.")
         for page_idx in range(page_count):
-            print(f"Downloading transcript HTML content - page {page_idx + 1}")
-
-            page_content_response = requests.get(
-                f"{knesset_protocol_page_content_api_url}?sProtocolNum={plenum_recording_id}&pageNum={page_idx}",
-                headers=knesset_http_headers,
-            )
-            page_content = json.loads(page_content_response.text)
-            pages_content.append(page_content)
+            page_content = get_html_transcript_page(knesset_http_headers, plenum_recording_id, page_idx)
+            if page_content is not None:
+                pages_content.append(page_content)
 
         # Process all page contents into an output HTML snippet
         output_html_parts = [page_content.get("sContent") for page_content in pages_content]
