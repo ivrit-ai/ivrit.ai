@@ -27,8 +27,7 @@ task_semaphore = Semaphore(MAX_CONCURRENT_TASKS)
 MAX_IN_FLIGHT_TASKS = 5000
 in_flight_semaphore = Semaphore(MAX_IN_FLIGHT_TASKS)
 
-whisper_models = []
-
+model = None 
 
 @app.route("/v1/audio/transcriptions", methods=["POST"])
 @app.route("/audio/transcriptions", methods=["POST"])
@@ -60,11 +59,8 @@ def transcribe_audio():
     try:
         # Process the task
         with task_semaphore:
-            model = None
             try:
                 # Model parameter is ignored - we use a predefined model at this point
-                model = whisper_models.pop()
-
                 segments, transcription_info = model.transcribe(
                     io.BytesIO(request_data.file),
                     task="transcribe",
@@ -89,10 +85,6 @@ def transcribe_audio():
             except Exception as e:
                 return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
 
-            finally:
-                if model is not None:
-                    whisper_models.append(model)
-
     finally:
         in_flight_semaphore.release()
 
@@ -104,8 +96,6 @@ def process_task(task_type, data):
     with tempfile.TemporaryDirectory() as d:
         mp3_bytes = base64.b64decode(data)
         open(f"{d}/audio.mp3", "wb").write(mp3_bytes)
-
-        model = whisper_models.pop()
 
         ret = {"segments": []}
 
@@ -122,8 +112,6 @@ def process_task(task_type, data):
                 "no_speech_prob": s.no_speech_prob,
             }
             ret["segments"].append(seg)
-
-        whisper_models.append(model)
 
         return ret
 
@@ -174,16 +162,6 @@ from the Hugging Face Hub.""",
 
     print(f"Loading whisper model: {args.model}. pid={os.getpid()} tid={threading.current_thread().native_id}")
 
-    whisper_models = []
-    for i in range(args.max_concurrent_tasks):
-        whisper_models.append(
-            whisper_models.append(
-                WhisperModel(
-                    args.model,
-                    device=args.device,
-                    compute_type=args.compute_type,
-                )
-            )
-        )
+    model = WhisperModel(args.model, device=args.device, compute_type=args.compute_type)
 
     app.run(host="0.0.0.0", port=args.port)
