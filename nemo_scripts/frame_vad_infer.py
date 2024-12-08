@@ -11,14 +11,13 @@ from omegaconf import DictConfig
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+def get_output_file_path(out_dir: str, source: str, episode: str):
+    return os.path.join(out_dir, source, episode + ".speech_probs")
+
+
 def generate_frame_vad_predictions(audio_files: list[str], final_output_fir: str, config: dict = {}) -> None:
     temp_processing_dir = os.path.join(final_output_fir, "vad_temp_processing")
-
-    # Create it if needed - clear if it exists
-    if os.path.exists(temp_processing_dir):
-        shutil.rmtree(temp_processing_dir)
     temp_input_source_dir = os.path.join(temp_processing_dir, "audio_files")
-    os.makedirs(temp_input_source_dir)
 
     cfg = DictConfig(
         {
@@ -35,6 +34,27 @@ def generate_frame_vad_predictions(audio_files: list[str], final_output_fir: str
         }
     )
 
+    # prune files which already have prediction from previous runs
+    # unless configured to reprocess
+    if not config["force_reprocess"]:
+        pruned_audio_files = []
+        for audio_file in audio_files:
+            source = Path(audio_file).parent.name
+            episode = Path(audio_file).stem
+            target_file_name = get_output_file_path(final_output_fir, source, episode)
+            if not os.path.exists(target_file_name):
+                pruned_audio_files.append(audio_file)
+        audio_files = pruned_audio_files
+
+    if len(audio_files) == 0:
+        logging.warning("No new audio files to process. Exiting.")
+        return
+
+    # Create it if needed - clear if it exists
+    if os.path.exists(temp_processing_dir):
+        shutil.rmtree(temp_processing_dir)
+    os.makedirs(temp_input_source_dir)
+
     # Create the input manifest from the audio files list
     # Need to adapt the incoming file path structure (source/episode) to a unified
     # filename source__episode - since NeMo tooling looks only at the filename and
@@ -45,7 +65,7 @@ def generate_frame_vad_predictions(audio_files: list[str], final_output_fir: str
     }
     flat_input_file_map_to_input_file = {v: k for k, v in input_file_to_flat_input_file_map.items()}
 
-    # Create synlinks in the tmp folder from the original input files
+    # Create symlinks in the tmp folder from the original input files
     # to the flat file names - these are the files nemo will process
     temp_input_file_list_relative = []
     for input_file, flat_input_file in input_file_to_flat_input_file_map.items():
@@ -133,7 +153,7 @@ def generate_frame_vad_predictions(audio_files: list[str], final_output_fir: str
         # get source + episode parts from the path - into final results output file
         source = Path(input_audio_file).parent.name
         episode = Path(input_audio_file).stem
-        target_file_name = os.path.join(final_output_fir, source, episode + ".speech_probs")
+        target_file_name = get_output_file_path(final_output_fir, source, episode)
 
         # ensure output dir exists
         Path(target_file_name).parent.mkdir(parents=True, exist_ok=True)

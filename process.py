@@ -93,6 +93,7 @@ def bulk_vad(args):
         # A pre-splitting step to limit max batch audio file duration
         # can be parallelized if it seems to be a bottleneck.
         nemo_frame_vad_config = {
+            "force_reprocess": args.force_reprocess,
             "nemo_vad_presplit_duration": args.nemo_presplit_max_duration,
             "nemo_vad_presplit_workers": args.nemo_presplit_workers,
         }
