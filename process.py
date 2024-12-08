@@ -11,6 +11,7 @@ from torch.multiprocessing import Pool
 import torch.multiprocessing.spawn
 
 from utils import utils
+from nemo_scripts.frame_vad_infer import generate_frame_vad_predictions
 
 # Using more than 1 thread appears to actually make VAD slower.
 # Using a single thread, and forking to run multiple processes.
@@ -18,6 +19,8 @@ from utils import utils
 # Yair, July 2023
 torch.set_num_threads(1)
 
+SILERO_VAD_SPLIT_PROCESSING = "silero_vad_splitting"
+NEMO_FRAME_VAD_PROCESSING = "nemo_frame_vad"
 SAMPLING_RATE = 16000
 
 
@@ -82,27 +85,40 @@ def prepare_audio_for_processing(source_filename, output_filename):
 
 
 def bulk_vad(args):
-    if args.jobs:
-        parallel_processes = args.jobs
-
     audio_files = utils.find_files(args.root_dir, args.skip_dir, [".mp3", ".m4a"])
-    processing_groups = [audio_files[i::parallel_processes] for i in range(parallel_processes)]
 
-    vad_process_config = {
-        "target_dir": args.target_dir,
-        "force_reprocess": args.force_reprocess,
-        "min_speech_duration_ms": args.min_speech_duration_ms,
-        "max_speech_duration_s": args.max_speech_duration_s,
-        "min_silence_duration_ms": args.min_silence_duration_ms,
-        "speech_pad_ms": args.speech_pad_ms,
-        "speech_threshold": args.speech_threshold,
-    }
+    if args.processing_type == NEMO_FRAME_VAD_PROCESSING:
+        # We invoke a single worker - Nemo uses batching to use the GPU
+        # while generating frame-level vaf predictions.
+        # A pre-splitting step to limit max batch audio file duration
+        # can be parallelized if it seems to be a bottleneck.
+        nemo_frame_vad_config = {
+            "nemo_vad_presplit_duration": args.nemo_presplit_max_duration,
+            "nemo_vad_presplit_workers": args.nemo_presplit_workers,
+        }
+        generate_frame_vad_predictions(audio_files, args.target_dir, nemo_frame_vad_config)
+        return
+    else:
+        parallel_processes = args.jobs
+        processing_groups = [audio_files[i::parallel_processes] for i in range(parallel_processes)]
+        # Remove empty groups
+        processing_groups = [pg for pg in processing_groups if pg]
 
-    with Pool(processes=len(processing_groups)) as pool:
-        pool.starmap(
-            invoke_processing_group,
-            [(i, processing_groups[i], vad_process_config) for i in range(len(processing_groups))],
-        )
+        vad_process_config = {
+            "target_dir": args.target_dir,
+            "force_reprocess": args.force_reprocess,
+            "min_speech_duration_ms": args.min_speech_duration_ms,
+            "max_speech_duration_s": args.max_speech_duration_s,
+            "min_silence_duration_ms": args.min_silence_duration_ms,
+            "speech_pad_ms": args.speech_pad_ms,
+            "speech_threshold": args.speech_threshold,
+        }
+
+        with Pool(processes=len(processing_groups)) as pool:
+            pool.starmap(
+                invoke_processing_group,
+                [(i, processing_groups[i], vad_process_config) for i in range(len(processing_groups))],
+            )
 
 
 def invoke_processing_group(this_group_id: int, this_group: list, config):
@@ -112,7 +128,6 @@ def invoke_processing_group(this_group_id: int, this_group: list, config):
 
 def bulk_vad_single_process(config, group_idx, audio_files, model, torch_utils):
     (get_speech_timestamps, _, read_audio, _, _) = torch_utils
-
     for idx, audio_file in enumerate(audio_files):
         print(f"Processing group {group_idx}, file #{idx}: {audio_file}")
 
@@ -219,7 +234,15 @@ if __name__ == "__main__":
         required=True,
         help="The directory where splitted audios will be stored.",
     )
-    parser.add_argument("--jobs", type=int, required=False, default=3, help="Allow N jobs at once.")
+    parser.add_argument(
+        "--processing-type",
+        type=str,
+        default=SILERO_VAD_SPLIT_PROCESSING,
+        help=f"Either {SILERO_VAD_SPLIT_PROCESSING},{NEMO_FRAME_VAD_PROCESSING}",
+    )
+    parser.add_argument(
+        "--jobs", type=int, required=False, default=3, help="Allow N jobs at once. (Does not apply to NeMo vad)"
+    )
     parser.add_argument(
         "--force-reprocess",
         required=False,
@@ -260,6 +283,20 @@ if __name__ == "__main__":
         required=False,
         default=0.5,
         help="VAD param: threshold (for speech detection)",
+    )
+    parser.add_argument(
+        "--nemo-presplit-workers",
+        type=int,
+        required=False,
+        default=1,
+        help="NeMo Frame VAD: How many CPU workers to use for pre-splitting long audio files",
+    )
+    parser.add_argument(
+        "--nemo-presplit-max-duration",
+        type=int,
+        required=False,
+        default=400,
+        help="NeMo Frame VAD: Max duration of audio files before splitting to multiple files as part of the pre processing step",
     )
 
     # Parse the arguments
