@@ -2,13 +2,13 @@ import json
 import os
 import shutil
 from pathlib import Path
+import logging
 
 import torch
 from nemo.collections.asr.parts.utils.vad_utils import generate_vad_frame_pred, init_frame_vad_model, prepare_manifest
-from nemo.utils import logging
 from omegaconf import DictConfig
 
-from vad_io import get_frame_vad_probs_filename
+from vad.vad_io import get_frame_vad_probs_filename
 from vad.definitions import SPEECH_PROB_FRAME_DURATION
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
