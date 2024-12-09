@@ -11,7 +11,7 @@ from utils.utils import parse_source_and_episode_from_filename
 from vad.vad_io import get_frame_vad_probs_filename, load_frame_vad_probs
 
 
-from local_transcribe.definitions import FULL_TRANSCRIPTION_FILENAME
+from transcribe.definitions import FULL_TRANSCRIPTION_FILENAME
 
 
 def get_speech_clips_from_vad(audio_file: str, input_vad_root_dir: str, min_no_speech_range_duration: float):

@@ -3,7 +3,7 @@ from numpy.random import default_rng, Generator
 from scipy.cluster.vq import kmeans2
 
 from utils.audio import WHISPER_EXPECTED_SAMPLE_RATE
-from utils.vad import SPEECH_PROB_FRAME_DURATION
+from vad.definitions import SPEECH_PROB_FRAME_DURATION
 
 default_tuning_parameters = {
     "max_processed_slice_duration": 200,  # Limit the processing size of slices of the audio

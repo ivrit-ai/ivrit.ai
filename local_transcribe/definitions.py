@@ -1,1 +1,0 @@
-FULL_TRANSCRIPTION_FILENAME = "full_transcripts.json"

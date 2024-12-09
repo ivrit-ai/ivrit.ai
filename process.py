@@ -4,9 +4,10 @@ import argparse
 
 from utils import utils
 from vad.frame_vad_infer import generate_frame_vad_predictions
+from transcribe.stable_ts import transcribe
 
 
-def preprocess_predict_vad(args):
+def process_vad(args):
     audio_files = utils.find_files(args.root_dir, args.skip_dir, [".mp3", ".m4a"])
 
     # We invoke a single worker - Nemo uses batching to use the GPU
@@ -19,6 +20,28 @@ def preprocess_predict_vad(args):
         "nemo_vad_presplit_workers": args.nemo_presplit_workers,
     }
     generate_frame_vad_predictions(audio_files, args.target_dir, nemo_frame_vad_config)
+
+
+def process_transcribe(args):
+    audio_files = utils.find_files(args.root_dir, args.skip_dir, [".mp3", ".m4a"])
+    config = {
+        "force_reprocess": args.force_reprocess,
+        "consider_speech_clips": True,
+        "vad_input_dir": None,
+        "generate_timestamp_tokens": True,
+        "get_word_level_timestamp": True,
+        "use_stable_ts": False,
+        "whisper_model_name": "tiny",
+        "language": "he",
+        "device": "cpu",
+        "compute_type": "int8",
+    }
+
+    transcribe(
+        audio_files,
+        args.target_dir,
+        config,
+    )
 
 
 if __name__ == "__main__":
@@ -74,6 +97,8 @@ if __name__ == "__main__":
 
     if args.processing_type == "vad":
         pass
-        preprocess_predict_vad(args)
+        process_vad(args)
+    elif args.processing_type == "transcribe":
+        process_transcribe(args)
     else:
         raise NotImplementedError(f"Processing type {args.processing_type} is not implemented yet.")

@@ -13,14 +13,11 @@ soundfile
 torch
 torchaudio
 transformers
-Werkzeug==2.2.2
 feedparser
 openai
 python-dotenv
 jiwer
 pandas
-peft
-evaluate
 yt_dlp
 beautifulsoup4
 openai
