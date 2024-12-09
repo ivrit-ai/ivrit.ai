@@ -11,7 +11,7 @@ from torch.multiprocessing import Pool
 import torch.multiprocessing.spawn
 
 from utils import utils
-from nemo_scripts.frame_vad_infer import generate_frame_vad_predictions
+from vad.frame_vad_infer import generate_frame_vad_predictions
 
 # Using more than 1 thread appears to actually make VAD slower.
 # Using a single thread, and forking to run multiple processes.

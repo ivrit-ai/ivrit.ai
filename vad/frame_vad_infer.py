@@ -8,11 +8,14 @@ from nemo.collections.asr.parts.utils.vad_utils import generate_vad_frame_pred, 
 from nemo.utils import logging
 from omegaconf import DictConfig
 
+from vad_io import get_frame_vad_probs_filename
+from vad.definitions import SPEECH_PROB_FRAME_DURATION
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def get_output_file_path(out_dir: str, source: str, episode: str):
-    return os.path.join(out_dir, source, episode + ".speech_probs")
+    return get_frame_vad_probs_filename(out_dir, source, episode)
 
 
 def generate_frame_vad_predictions(audio_files: list[str], final_output_fir: str, config: dict = {}) -> None:
@@ -30,7 +33,7 @@ def generate_frame_vad_predictions(audio_files: list[str], final_output_fir: str
             "num_workers": 0,  # with >0 the pickling of the nemo classes fail - keep at 0
             "evaluate": False,
             "model_path": "vad_multilingual_frame_marblenet",
-            "shift_length_in_sec": 0.02,  # Can't change this - this model was trained on this frame size
+            "shift_length_in_sec": SPEECH_PROB_FRAME_DURATION,  # Can't change this - this model was trained on this frame size
         }
     )
 

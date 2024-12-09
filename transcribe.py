@@ -8,6 +8,7 @@ from openai import AsyncOpenAI
 from openai.types.audio import Transcription
 
 from utils import utils
+from local_transcribe.stable_ts import transcribe as transcribe_stable_ts
 
 
 def map_transcription_response_to_result(transcription: Transcription):
@@ -165,6 +166,28 @@ def transcribe(args):
         asyncio.run(transcribe_audio_source(desc, args))
 
 
+def transcribe_local(args):
+    audio_files = utils.find_files(args.root_dir, args.skip_dir, [".mp3", ".m4a"])
+    output_dir = args.target_dir
+    config = {
+        "force_reprocess": args.force_reprocess,
+        "consider_speech_clips": True,
+        "vad_input_dir": None,
+        "generate_timestamp_tokens": True,
+        "get_word_level_timestamp": True,
+        "use_stable_ts": False,
+        "whisper_model_name": "tiny",
+        "language": "he",
+        "device": "cpu",
+        "compute_type": "int8",
+    }
+    transcribe_stable_ts(
+        audio_files,
+        output_dir,
+        config,
+    )
+
+
 if __name__ == "__main__":
     # Define an argument parser
     parser = argparse.ArgumentParser(description="Transcribe a set of audio snippets generated using process.py files.")
@@ -194,7 +217,7 @@ if __name__ == "__main__":
         action="store_true",
         help="Force re-transcription of all files.",
     )
-    parser.add_argument("--server-url", type=str, required=True, help="Transcription server URL.")
+    parser.add_argument("--server-url", type=str, required=False, help="Transcription server URL.")
     parser.add_argument(
         "--max-parallel-requests",
         type=int,
@@ -213,4 +236,7 @@ if __name__ == "__main__":
     # Parse the arguments
     args = parser.parse_args()
 
-    transcribe(args)
+    if args.server_url:
+        transcribe(args)
+    else:
+        transcribe_local(args)

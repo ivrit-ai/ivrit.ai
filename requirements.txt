@@ -1,6 +1,6 @@
 backoff
 datasets
-faster-whisper
+faster-whisper<1.1.0
 flask
 Flask-OAuthlib
 librosa
@@ -31,3 +31,4 @@ pydantic
 pyodata
 python-docx
 nemo_toolkit[asr]
+stable-ts
