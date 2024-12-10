@@ -30,7 +30,7 @@ def process_transcribe(args):
         "vad_input_dir": None,
         "generate_timestamp_tokens": True,
         "get_word_level_timestamp": True,
-        "use_stable_ts": False,
+        "use_stable_ts": True,
         "whisper_model_name": "tiny",
         "language": "he",
         "device": "cpu",
