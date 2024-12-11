@@ -5,11 +5,12 @@ from pathlib import Path
 import logging
 
 import torch
-from nemo.collections.asr.parts.utils.vad_utils import generate_vad_frame_pred, init_frame_vad_model, prepare_manifest
+from nemo.collections.asr.parts.utils.vad_utils import init_frame_vad_model, prepare_manifest
 from omegaconf import DictConfig
 
 from vad.vad_io import get_frame_vad_probs_filename
 from vad.definitions import SPEECH_PROB_FRAME_DURATION
+from vad.nemo_patched_logic import generate_vad_frame_pred
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
