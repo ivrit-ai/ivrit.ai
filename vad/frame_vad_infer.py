@@ -3,6 +3,7 @@ import os
 import shutil
 from pathlib import Path
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
 import torch
 from nemo.collections.asr.parts.utils.vad_utils import init_frame_vad_model, prepare_manifest
@@ -11,12 +12,17 @@ from omegaconf import DictConfig
 from vad.vad_io import get_frame_vad_probs_filename
 from vad.definitions import SPEECH_PROB_FRAME_DURATION
 from vad.nemo_patched_logic import generate_vad_frame_pred
+from utils.audio import transcode_to_mono_16k
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
 def get_output_file_path(out_dir: str, source: str, episode: str):
     return get_frame_vad_probs_filename(out_dir, source, episode)
+
+
+def parallel_audio_file_adapt(from_to_tuples: list[tuple[str, str]], max_parallel_workers=1):
+    with ThreadPoolExecutor(max_workers=max_parallel_workers) as executor:
+        executor.map(lambda fromto: transcode_to_mono_16k(fromto[0], fromto[1]), from_to_tuples)
 
 
 def generate_frame_vad_predictions(audio_files: list[str], final_output_fir: str, config: dict = {}) -> None:
@@ -63,21 +69,31 @@ def generate_frame_vad_predictions(audio_files: list[str], final_output_fir: str
     # Need to adapt the incoming file path structure (source/episode) to a unified
     # filename source__episode - since NeMo tooling looks only at the filename and
     # also requires it to be unique.
+    # additionally the dataset loader would choke on non-mono input files.
+    # so we will:
+    # transcode to mono 16k wav since transcoding is done, at least we can offload this too ffmpeg
+    # in one go
 
     input_file_to_flat_input_file_map = {
-        input_file: f"{Path(input_file).parent.name}__{Path(input_file).name}" for input_file in audio_files
+        input_file: f"{Path(input_file).parent.name}__{Path(input_file).stem}.wav" for input_file in audio_files
     }
     flat_input_file_map_to_input_file = {v: k for k, v in input_file_to_flat_input_file_map.items()}
 
-    # Create symlinks in the tmp folder from the original input files
-    # to the flat file names - these are the files nemo will process
+    # Create optimized audio inputs files in the tmp folder from the original input files
+    # Use the flat file names - these are the files nemo will process
     temp_input_file_list_relative = []
+    audio_files_to_adapt_from_to_tuples = []
     for input_file, flat_input_file in input_file_to_flat_input_file_map.items():
         flat_input_file = os.path.join(temp_input_source_dir, flat_input_file)
         temp_input_file_list_relative.append(flat_input_file)
         input_file = os.path.abspath(input_file)
         flat_input_file = os.path.abspath(flat_input_file)
-        os.symlink(input_file, flat_input_file)
+        audio_files_to_adapt_from_to_tuples.append((input_file, flat_input_file))
+
+    print(f"pre-trasncoding {len(audio_files_to_adapt_from_to_tuples)} audio files")
+    parallel_audio_file_adapt(
+        audio_files_to_adapt_from_to_tuples, max_parallel_workers=config["nemo_vad_pretranscode_workers"]
+    )
 
     input_manifest_audio_entries = [{"audio_filepath": af} for af in temp_input_file_list_relative]
     with open(cfg.input_manifest, "w", encoding="utf-8") as fout:

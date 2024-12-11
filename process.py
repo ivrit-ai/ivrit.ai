@@ -16,10 +16,18 @@ def process_vad(args):
     # can be parallelized if it seems to be a bottleneck.
     nemo_frame_vad_config = {
         "force_reprocess": args.force_reprocess,
+        "nemo_vad_pretranscode_workers": args.nemo_pretranscode_workers,
         "nemo_vad_presplit_duration": args.nemo_presplit_max_duration,
         "nemo_vad_presplit_workers": args.nemo_presplit_workers,
     }
-    generate_frame_vad_predictions(audio_files, args.target_dir, nemo_frame_vad_config)
+
+    # Throwing all input files (could be 1000s...) on Nemo could work.
+    # but to make recovery easier, and conserve temp storage (intermediate audio transcoding)
+    # we will chunk it to (large) number thus to balance the cost of loading the vad model every time
+    chunk_size = 200
+    for audio_files_chunk in [audio_files[i : i + chunk_size] for i in range(0, len(audio_files), chunk_size)]:
+        print(f"Processing {len(audio_files_chunk)} files chunk")
+        generate_frame_vad_predictions(audio_files_chunk, args.target_dir, nemo_frame_vad_config)
 
 
 def process_transcribe(args):
@@ -76,6 +84,13 @@ if __name__ == "__main__":
         required=False,
         action="store_true",
         help="Force processing even if already done",
+    )
+    parser.add_argument(
+        "--nemo-pretranscode-workers",
+        type=int,
+        required=False,
+        default=1,
+        help="NeMo Frame VAD: How many CPU threads to use for pre-transcoding input audio (each uses ffmpeg sub process)",
     )
     parser.add_argument(
         "--nemo-presplit-workers",

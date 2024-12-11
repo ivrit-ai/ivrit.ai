@@ -1,4 +1,5 @@
-from subprocess import CalledProcessError, run
+import json
+from subprocess import CalledProcessError, run, PIPE, DEVNULL
 
 import numpy as np
 
@@ -45,3 +46,41 @@ def load_audio_in_whisper_format(file: str, sr: int = WHISPER_EXPECTED_SAMPLE_RA
         raise RuntimeError(f"Failed to load audio: {e.stderr.decode()}") from e
 
     return np.frombuffer(out, np.int16).flatten().astype(np.float32) / 32768.0
+
+
+def parse_audio_info(audio_info):
+    if audio_info is not None and "streams" in audio_info:
+        for stream in audio_info["streams"]:
+            if stream["codec_type"] == "audio":
+                sample_rate = int(stream["sample_rate"])
+                channels = int(stream["channels"])
+                duration = float(stream["duration"])
+                return {"sample_rate": sample_rate, "channels": channels, "duration": duration}
+    return None
+
+
+def get_audio_info(input_file):
+    # Run ffprobe to get audio properties in JSON format
+    cmd = ["ffprobe", "-v", "error", "-print_format", "json", "-show_streams", "-select_streams", "a", input_file]
+    result = run(cmd, stderr=PIPE, stdout=PIPE, text=True)
+    output = result.stdout
+
+    # Parse the JSON output
+    info = None
+    try:
+        raw_info = json.loads(output)
+        info = parse_audio_info(raw_info)
+    except:
+        print("Warning - Unable to probe input audio source properties...")
+        pass
+
+    return info
+
+
+def is_mono_audio(audio_info):
+    return audio_info is not None and audio_info["channels"] == 1  # Cannot detect audio info ? assume non mono
+
+
+def transcode_to_mono_16k(input_file, output_file):
+    cmd = ["ffmpeg", "-y", "-i", input_file, "-ac", "1", "-ar", "16000", output_file]
+    run(cmd, stdout=DEVNULL, stderr=DEVNULL)
