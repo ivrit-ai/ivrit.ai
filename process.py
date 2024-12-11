@@ -39,9 +39,8 @@ def process_transcribe(args):
         "generate_timestamp_tokens": True,
         "get_word_level_timestamp": True,
         "use_stable_ts": True,
-        "whisper_model_name": "tiny",
+        "whisper_model_name": args.transcribe_model,
         "language": "he",
-        "device": "cpu",
         "compute_type": "int8",
     }
 
@@ -105,6 +104,13 @@ if __name__ == "__main__":
         required=False,
         default=400,
         help="NeMo Frame VAD: Max duration of audio files before splitting to multiple files as part of the pre processing step",
+    )
+    parser.add_argument(
+        "--transcribe-model",
+        type=str,
+        required=False,
+        default="ivrit-ai/faster-whisper-v2-d4",
+        help="The whisper model to use (faster-whisper format)",
     )
 
     # Parse the arguments
