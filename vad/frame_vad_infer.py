@@ -16,6 +16,7 @@ from utils.audio import transcode_to_mono_16k
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 def get_output_file_path(out_dir: str, source: str, episode: str):
     return get_frame_vad_probs_filename(out_dir, source, episode)
 
@@ -23,6 +24,17 @@ def get_output_file_path(out_dir: str, source: str, episode: str):
 def parallel_audio_file_adapt(from_to_tuples: list[tuple[str, str]], max_parallel_workers=1):
     with ThreadPoolExecutor(max_workers=max_parallel_workers) as executor:
         executor.map(lambda fromto: transcode_to_mono_16k(fromto[0], fromto[1]), from_to_tuples)
+
+
+def exclude_already_predicted(audio_files: list[str], final_output_fir: str):
+    pruned_audio_files = []
+    for audio_file in audio_files:
+        source = Path(audio_file).parent.name
+        episode = Path(audio_file).stem
+        target_file_name = get_output_file_path(final_output_fir, source, episode)
+        if not os.path.exists(target_file_name):
+            pruned_audio_files.append(audio_file)
+    return pruned_audio_files
 
 
 def generate_frame_vad_predictions(audio_files: list[str], final_output_fir: str, config: dict = {}) -> None:
@@ -47,14 +59,7 @@ def generate_frame_vad_predictions(audio_files: list[str], final_output_fir: str
     # prune files which already have prediction from previous runs
     # unless configured to reprocess
     if not config["force_reprocess"]:
-        pruned_audio_files = []
-        for audio_file in audio_files:
-            source = Path(audio_file).parent.name
-            episode = Path(audio_file).stem
-            target_file_name = get_output_file_path(final_output_fir, source, episode)
-            if not os.path.exists(target_file_name):
-                pruned_audio_files.append(audio_file)
-        audio_files = pruned_audio_files
+        audio_files = exclude_already_predicted(audio_files, final_output_fir)
 
     if len(audio_files) == 0:
         logging.warning("No new audio files to process. Exiting.")
@@ -179,7 +184,9 @@ def generate_frame_vad_predictions(audio_files: list[str], final_output_fir: str
         Path(target_file_name).parent.mkdir(parents=True, exist_ok=True)
 
         # move the frames result file to final target
-        shutil.move(temp_frame_result_file_name, target_file_name)
+        # Ensure the target dir exists
+        Path(target_file_name).parent.mkdir(exist_ok=True, parents=True)
+        os.replace(temp_frame_result_file_name, target_file_name)
 
     logging.info(f"Removing temporary processing directory")
     # Remove the temp processing folder

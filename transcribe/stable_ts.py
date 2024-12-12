@@ -35,17 +35,21 @@ def get_output_filename(audio_file_input: str, final_output_dir: str) -> str:
     return os.path.join(output_file_directory, FULL_TRANSCRIPTION_FILENAME)
 
 
+def exclude_already_transcribed(audio_files: str, final_output_dir: str):
+    pruned_audio_files = []
+    for audio_file in audio_files:
+        output_filename = get_output_filename(audio_file, final_output_dir)
+        if not os.path.exists(output_filename):
+            pruned_audio_files.append(audio_file)
+    return pruned_audio_files
+
+
 def transcribe(audio_files: str, final_output_dir: str, config: dict):
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Prune audio files which are already processed
     if not config.get("force_reprocess", False):
-        pruned_audio_files = []
-        for audio_file in audio_files:
-            output_filename = get_output_filename(audio_file, final_output_dir)
-            if not os.path.exists(output_filename):
-                pruned_audio_files.append(audio_file)
-        audio_files = pruned_audio_files
+        audio_files = exclude_already_transcribed(audio_files, final_output_dir)
 
     if len(audio_files) == 0:
         return
