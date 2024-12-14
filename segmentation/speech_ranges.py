@@ -107,9 +107,7 @@ def get_audio_speech_ranges(frame_level_speech_probs: np.ndarray, min_no_speech_
 
                     # and we drop the last no speech range
                     # so the next slice can re-find it
-                    print(no_speech_ranges_in_slice)
                     no_speech_ranges_in_slice = no_speech_ranges_in_slice[:, :-1]
-                    print(no_speech_ranges_in_slice)
         else:
             done_processing = True
 
