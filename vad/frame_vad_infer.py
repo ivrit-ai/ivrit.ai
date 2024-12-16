@@ -142,7 +142,7 @@ def generate_frame_vad_predictions(audio_files: list[str], final_output_fir: str
             "labels": ["infer"],
             "num_workers": cfg.num_workers,
             "shuffle": False,
-            "normalize_audio_db": False,
+            "normalize_audio_db": None,
         }
     )
 
