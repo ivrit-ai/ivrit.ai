@@ -1,4 +1,5 @@
 backoff
+boto3==1.36.21
 datasets
 faster-whisper<1.1.0
 flask
@@ -16,6 +17,7 @@ transformers
 feedparser
 openai
 python-dotenv
+psycopg==3.2.4
 jiwer
 pandas
 yt_dlp
