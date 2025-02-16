@@ -84,7 +84,7 @@ def process_transcribe(args):
 if __name__ == "__main__":
     # Define an argument parser
     parser = argparse.ArgumentParser(
-        description="Search for audio files in a directory excluding specified subdirectories"
+        description="Process normalized source audio files into crowd-transcribe bound dataset"
     )
 
     # Add the arguments
