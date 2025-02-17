@@ -1,0 +1,3 @@
+VAD_SPEECH_PROBS_FILENAME = "speech_probs.frame"
+VAD_SPEECH_PROBS_NP_CACHE_FILENAME = "speech_probs.frame.npy"
+SPEECH_PROB_FRAME_DURATION = 0.02

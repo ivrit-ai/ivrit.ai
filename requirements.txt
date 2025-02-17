@@ -1,11 +1,11 @@
 backoff
 datasets
-faster-whisper
+faster-whisper<1.1.0
 flask
 Flask-OAuthlib
 librosa
 mutagen
-numpy
+numpy<2
 openai-whisper
 pydub
 sortedcontainers
@@ -13,14 +13,11 @@ soundfile
 torch
 torchaudio
 transformers
-Werkzeug==2.2.2
 feedparser
 openai
 python-dotenv
 jiwer
 pandas
-peft
-evaluate
 yt_dlp
 beautifulsoup4
 openai
@@ -30,3 +27,5 @@ tqdm
 pydantic
 pyodata
 python-docx
+nemo_toolkit[asr]
+stable-ts
