@@ -1,7 +1,7 @@
 import argparse
 import json
 import pathlib
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 
 import boto3
 import psycopg
@@ -9,8 +9,9 @@ from botocore.exceptions import ClientError
 from psycopg.rows import dict_row
 from tqdm import tqdm
 
+from sources.crowd_recital.metadata import SessionMetadata, source_id, source_type
+
 from .normalize import add_normalize_args, normalize_sessions
-from sources.crowd_recital.metadata import SessionMetadata, source_type, source_id
 
 
 def load_download_state(state_file: pathlib.Path) -> dict:

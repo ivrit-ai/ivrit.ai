@@ -5,8 +5,6 @@ import sys
 from dataclasses import asdict
 
 import numpy as np
-
-# Import the alignment model loader from stable_whisper
 import stable_whisper
 from tqdm import tqdm
 

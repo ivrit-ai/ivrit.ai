@@ -1,5 +1,5 @@
-import argparse
 import sys
+
 from sources.crowd_recital.download import main as crowd_recital_main
 
 source_to_main = {
