@@ -175,6 +175,7 @@ def main() -> None:
     parser.add_argument(
         "--skip-download", action="store_true", help="Skip downloading new sessions and only perform normalization."
     )
+    parser.add_argument("--session-ids", type=str, action="append", default=[], help="Filter to process only the specified session ids (can be specified multiple times)")
 
     # Add normalization-related arguments (input-folder is not needed since we use output-dir as the folder to normalize)
     add_normalize_args(parser)
@@ -188,6 +189,8 @@ def main() -> None:
 
     # Load sessions from PostgreSQL database
     sessions = load_uploaded_sessions_from_db(args.pg_connection_string, languages=args.languages)
+    if args.session_ids:
+        sessions = [s for s in sessions if str(s.get("session_id")) in args.session_ids]
     if args.max_sessions is not None:
         sessions = sessions[: args.max_sessions]
     if not sessions:
@@ -246,7 +249,9 @@ def main() -> None:
             align_model=args.align_model,
             align_device=args.align_device,
             force_reprocess=args.force_reprocess,
+            force_rescore=args.force_rescore,
             failure_threshold=args.failure_threshold,
+            session_ids=args.session_ids
         )
 
 
