@@ -61,7 +61,6 @@ def list_recording_sessions(s3_client, bucket: str, prefix: str = "") -> list:
 def download_file(s3_client, bucket: str, key: str, destination: pathlib.Path) -> None:
     try:
         s3_client.download_file(bucket, key, str(destination))
-        print(f"Downloaded {key} to {destination}")
     except ClientError as e:
         print(f"Error downloading {key}: {e}")
 
