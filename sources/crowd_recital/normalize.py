@@ -2,6 +2,7 @@ import argparse
 import json
 import pathlib
 import sys
+from dataclasses import asdict
 
 import numpy as np
 
@@ -9,7 +10,7 @@ import numpy as np
 import stable_whisper
 from tqdm import tqdm
 
-# Import vtt conversion function
+from sources.crowd_recital.metadata import SessionMetadata
 from utils.vtt import vtt_to_whisper_result
 
 
@@ -76,8 +77,8 @@ def normalize_sessions(
         tqdm.write(f"Processing session: {session_dir.name}")
 
         # Skip if already processed unless force_reprocess is True
-        aligned_vtt = session_dir / "transcript.aligned.vtt"
-        if aligned_vtt.exists() and not force_reprocess:
+        aligned_transcript_file = session_dir / "transcript.aligned.json"
+        if aligned_transcript_file.exists() and not force_reprocess:
             continue
 
         # Check for required input files
@@ -90,13 +91,13 @@ def normalize_sessions(
         # Load session metadata to get language info
         try:
             with open(meta_file, "r", encoding="utf-8") as f:
-                metadata = json.load(f)
+                metadata: SessionMetadata = SessionMetadata(**json.load(f))
         except Exception as e:
             tqdm.write(f" - Error reading metadata.json in session {session_dir.name}: {e}")
             continue
 
         # Currently only supporting Hebrew language sessions
-        doc_lang = metadata.get("document_language", "").lower()
+        doc_lang = metadata.document_language.lower()
         if doc_lang != "he":
             tqdm.write(
                 f" - Skipping session {session_dir.name}: unsupported language '{doc_lang}'. Only 'he' is supported."
@@ -115,14 +116,16 @@ def normalize_sessions(
 
         # Perform alignment between audio and transcript
         try:
-            align_result = model.align(str(audio_file), whisper_result, language, failure_threshold=failure_threshold)
+            align_result: stable_whisper.WhisperResult = model.align(
+                str(audio_file), whisper_result, language, failure_threshold=failure_threshold
+            )
         except Exception as e:
             tqdm.write(f" - Alignment failed for session {session_dir.name}: {e}")
             continue
 
-        # Save aligned transcript in VTT format
+        # Save aligned transcript in WhisperResult format
         try:
-            align_result.to_srt_vtt(str(aligned_vtt), word_level=False)
+            align_result.save_as_json(str(aligned_transcript_file))
         except Exception as e:
             tqdm.write(f" - Failed to save aligned transcript for session {session_dir.name}: {e}")
             continue
@@ -140,10 +143,10 @@ def normalize_sessions(
             quality_score = 0.0
 
         # Update metadata with quality score for future reference
-        metadata["quality_score"] = quality_score
+        metadata.quality_score = quality_score
         try:
             with open(meta_file, "w", encoding="utf-8") as f:
-                json.dump(metadata, f, indent=2)
+                json.dump(asdict(metadata), f, indent=2)
         except Exception as e:
             tqdm.write(f" - Failed to update metadata.json for session {session_dir.name}: {e}")
             continue
