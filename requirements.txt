@@ -30,4 +30,4 @@ pydantic
 pyodata
 python-docx
 nemo_toolkit[asr]
-stable-ts
+stable-ts==2.18.3

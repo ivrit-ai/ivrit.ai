@@ -9,6 +9,8 @@ from botocore.exceptions import ClientError
 from psycopg.rows import dict_row
 from tqdm import tqdm
 
+from .normalize import add_normalize_args, normalize_sessions
+
 
 @dataclass
 class SessionMetadata:
@@ -180,6 +182,12 @@ def main() -> None:
         default=["he"],
         help="Language codes to filter sessions by. Default is 'he'. Multiple languages can be specified.",
     )
+    parser.add_argument("--skip-normalize", action="store_true", help="Skip normalization process")
+    parser.add_argument("--skip-download", action="store_true", help="Skip downloading new sessions and only perform normalization.")
+
+    # Add normalization-related arguments (input-folder is not needed since we use output-dir as the folder to normalize)
+    add_normalize_args(parser)
+
     args = parser.parse_args()
 
     output_dir = pathlib.Path(args.output_dir)
@@ -195,43 +203,56 @@ def main() -> None:
         print("No recording sessions found in the database.")
         return
 
-    # Setup the S3 client using provided AWS credentials or default env
-    if args.aws_access_key and args.aws_secret_key:
-        s3_client = boto3.client("s3", aws_access_key_id=args.aws_access_key, aws_secret_access_key=args.aws_secret_key)
+    if args.skip_download:
+        print("Skipping session downloads (--skip-download enabled).")
     else:
-        s3_client = boto3.client("s3")
+        # Setup the S3 client using provided AWS credentials or default env
+        if args.aws_access_key and args.aws_secret_key:
+            s3_client = boto3.client("s3", aws_access_key_id=args.aws_access_key, aws_secret_access_key=args.aws_secret_key)
+        else:
+            s3_client = boto3.client("s3")
 
-    for session in tqdm(sessions, desc="Downloading sessions"):
-        session_id = session.get("session_id")
-        # Optionally, print session metadata
-        print(
-            f"Processing session {session_id} | Title: {session.get('document_title')} | Lang: {session.get('document_language')} | Duration: {session.get('session_duration')} | User: {session.get('user_id')} | YOB: {session.get('year_of_birth')} | Sex: {session.get('biological_sex')}"
-        )
-        if not args.force_download and download_state.get(session_id, False):
-            continue
+        for session in tqdm(sessions, desc="Downloading sessions"):
+            tqdm.write(
+                f"Processing session {session.get('session_id')} | Title: {session.get('document_title')} | Lang: {session.get('document_language')} | Duration: {session.get('session_duration')} | User: {session.get('user_id')} | YOB: {session.get('year_of_birth')} | Sex: {session.get('biological_sex')}"
+            )
+            if not args.force_download and download_state.get(session.get('session_id'), False):
+                continue
+            download_session_data_files(
+                s3_client, args.s3_bucket, args.s3_prefix, session.get('session_id'), output_dir, args.force_download
+            )
+            # Write session metadata to metadata.json in the session output directory
+            session_output_dir = output_dir / session.get('session_id')
+            metadata_file = session_output_dir / "metadata.json"
+            metadata_instance = SessionMetadata(
+                session_id=str(session.get("session_id")),
+                session_duration=float(session.get("session_duration")),
+                user_id=str(session.get("user_id")),
+                document_language=str(session.get("document_language")),
+                document_title=str(session.get("document_title")),
+                document_source_type=str(session.get("document_source_type")),
+                year_of_birth=int(session.get("year_of_birth")) if session.get("year_of_birth") is not None else None,
+                biological_sex=session.get("biological_sex"),
+            )
+            with open(metadata_file, "w") as f:
+                json.dump(asdict(metadata_instance), f, indent=2)
+            # Mark session as downloaded and update state file
+            download_state[session.get('session_id')] = True
+            save_download_state(download_state, state_file)
 
-        download_session_data_files(
-            s3_client, args.s3_bucket, args.s3_prefix, session_id, output_dir, args.force_download
+    # After downloads complete, process normalization if not skipped
+    if not args.skip_normalize:
+        print("Starting normalization process...")
+        normalize_sessions(
+            output_dir,
+            align_model=args.align_model,
+            align_device=args.align_device,
+            force_reprocess=args.force_reprocess,
+            failure_threshold=args.failure_threshold,
         )
-        # Write session metadata to metadata.json in the session output directory
-        session_output_dir = output_dir / session_id
-        metadata_file = session_output_dir / "metadata.json"
-        metadata_instance = SessionMetadata(
-            session_id=str(session.get("session_id")),
-            session_duration=float(session.get("session_duration")),
-            user_id=str(session.get("user_id")),
-            document_language=str(session.get("document_language")),
-            document_title=str(session.get("document_title")),
-            document_source_type=str(session.get("document_source_type")),
-            year_of_birth=int(session.get("year_of_birth")) if session.get("year_of_birth") is not None else None,
-            biological_sex=session.get("biological_sex"),
-        )
-        with open(metadata_file, "w") as f:
-            json.dump(asdict(metadata_instance), f, indent=2)
-        # Mark session as downloaded and update state file
-        download_state[session_id] = True
-        save_download_state(download_state, state_file)
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    print("This module is not intended to be executed directly. Please use the top-level download.py.", file=sys.stderr)
