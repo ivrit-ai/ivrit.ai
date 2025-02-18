@@ -186,6 +186,26 @@ def normalize_sessions(
         quality_score, per_segment_scores = calculate_quality_score(align_result, session_dir.name)
         metadata.quality_score = quality_score
         metadata.per_segment_quality_scores = per_segment_scores
+
+        segments = list(align_result.segments)
+        segments_count = len(segments)
+        words_count = 0
+        total_segment_duration = 0
+        for segment in segments:
+            # Count words if available
+            if segment.has_words and hasattr(segment, "words"):
+                words_count += len(segment.words)
+            total_segment_duration += (segment.end - segment.start)
+        avg_words_per_segment = words_count / segments_count if segments_count > 0 else 0
+        avg_segment_duration = total_segment_duration / segments_count if segments_count > 0 else 0
+        avg_words_per_minute = words_count / (metadata.session_duration / 60) if metadata.session_duration > 0 else 0
+
+        metadata.segments_count = segments_count
+        metadata.words_count = words_count
+        metadata.avg_words_per_segment = round(avg_words_per_segment, 4)
+        metadata.avg_segment_duration = round(avg_segment_duration, 4)
+        metadata.avg_words_per_minute = round(avg_words_per_minute, 4)
+
         try:
             with open(meta_file, "w", encoding="utf-8") as f:
                 json.dump(asdict(metadata), f, indent=2)

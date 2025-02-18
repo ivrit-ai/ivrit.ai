@@ -10,6 +10,7 @@ from psycopg.rows import dict_row
 from tqdm import tqdm
 
 from sources.crowd_recital.metadata import SessionMetadata, source_id, source_type
+from sources.crowd_recital.manifest import build_manifest
 
 from .normalize import add_normalize_args, normalize_sessions
 
@@ -175,6 +176,7 @@ def main() -> None:
     parser.add_argument(
         "--skip-download", action="store_true", help="Skip downloading new sessions and only perform normalization."
     )
+    parser.add_argument("--skip-manifest", action="store_true", help="Skip generating manifest CSV")
     parser.add_argument(
         "--session-ids",
         type=str,
@@ -261,6 +263,10 @@ def main() -> None:
             failure_threshold=args.failure_threshold,
             session_ids=args.session_ids,
         )
+
+    if not args.skip_manifest:
+        print("Generating manifest CSV...")
+        build_manifest(str(output_dir))
 
 
 if __name__ == "__main__":
