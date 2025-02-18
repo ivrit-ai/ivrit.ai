@@ -20,7 +20,6 @@ jiwer
 pandas
 yt_dlp
 beautifulsoup4
-openai
 webvtt-py
 scipy
 tqdm
