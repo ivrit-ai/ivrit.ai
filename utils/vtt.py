@@ -3,6 +3,7 @@ import re
 from typing import Union
 
 from stable_whisper.result import WhisperResult
+from utils.text_cleanup import cleanup_text_for_whisper_alignment
 
 
 def vtt_to_whisper_result(source: Union[str, bytes]) -> WhisperResult:
@@ -92,7 +93,7 @@ def vtt_to_whisper_result(source: Union[str, bytes]) -> WhisperResult:
             text_lines.append(lines[i])
             i += 1
         text = " " + " ".join(text_lines).strip()
-
+        text = cleanup_text_for_whisper_alignment(text)
         segments.append({"start": start_sec, "end": end_sec, "text": text})
         # Skip the blank line separating cues.
         i += 1

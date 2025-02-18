@@ -17,17 +17,40 @@ DEFAULT_ALIGN_DEVICE = "auto"
 DEFAULT_FAILURE_THRESHOLD = 0.2
 
 
-def calculate_quality_score(align_result, session_name="") -> float:
+def calculate_quality_score(align_result: stable_whisper.WhisperResult, session_name="") -> float:
     """Calculate the quality score based on the median word probabilities from the alignment result."""
     try:
-        words = list(align_result.all_words())
-        if words:
-            probabilities = [word.probability for word in words]
-            return float(np.median(probabilities))
+        per_segment_scores = []
+        all_word_probs = []
+
+        segments = list(align_result.segments)
+        for segment in segments:
+            segment_word_probs = []
+            if segment.has_words:
+                for word in segment.words:
+                    if hasattr(word, "probability"):
+                        prob = word.probability
+                        segment_word_probs.append(prob)
+                        all_word_probs.append(prob)
+
+            if segment_word_probs:
+                per_segment_scores.append(
+                    {
+                        "start": segment.start,
+                        "end": segment.end,
+                        "probability": round(float(np.median(segment_word_probs)), 4),
+                    }
+                )
+
+        global_quality_score = round(float(np.median(all_word_probs)), 4) if all_word_probs else 0.0
+
     except Exception as e:
         if session_name:
             tqdm.write(f" - Failed to calculate quality score for session {session_name}: {e}")
-    return 0.0
+        global_quality_score = 0.0
+        per_segment_scores = []
+
+    return global_quality_score, per_segment_scores
 
 
 def add_normalize_args(parser: argparse.ArgumentParser) -> None:
@@ -68,7 +91,7 @@ def normalize_sessions(
     force_reprocess: bool = False,
     force_rescore: bool = False,
     failure_threshold: float = DEFAULT_FAILURE_THRESHOLD,
-    session_ids: list[str] = None
+    session_ids: list[str] = None,
 ) -> None:
     # Validate input folder exists before proceeding
     if not input_folder.exists() or not input_folder.is_dir():
@@ -157,8 +180,9 @@ def normalize_sessions(
                 tqdm.write(f" - Failed to load aligned transcript for session {session_dir.name}: {e}")
                 continue
 
-        quality_score = calculate_quality_score(align_result, session_dir.name)
+        quality_score, per_segment_scores = calculate_quality_score(align_result, session_dir.name)
         metadata.quality_score = quality_score
+        metadata.per_segment_quality_scores = per_segment_scores
         try:
             with open(meta_file, "w", encoding="utf-8") as f:
                 json.dump(asdict(metadata), f, indent=2)

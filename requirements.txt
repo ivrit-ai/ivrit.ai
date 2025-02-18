@@ -6,6 +6,7 @@ flask
 Flask-OAuthlib
 librosa
 mutagen
+hebrew
 numpy<2
 openai-whisper
 pydub

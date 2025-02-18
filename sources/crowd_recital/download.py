@@ -175,7 +175,13 @@ def main() -> None:
     parser.add_argument(
         "--skip-download", action="store_true", help="Skip downloading new sessions and only perform normalization."
     )
-    parser.add_argument("--session-ids", type=str, action="append", default=[], help="Filter to process only the specified session ids (can be specified multiple times)")
+    parser.add_argument(
+        "--session-ids",
+        type=str,
+        action="append",
+        default=[],
+        help="Filter to process only the specified session ids (can be specified multiple times)",
+    )
 
     # Add normalization-related arguments (input-folder is not needed since we use output-dir as the folder to normalize)
     add_normalize_args(parser)
@@ -233,7 +239,9 @@ def main() -> None:
                 document_source_type=str(session.get("document_source_type")),
                 year_of_birth=int(session.get("year_of_birth")) if session.get("year_of_birth") is not None else None,
                 biological_sex=session.get("biological_sex"),
-                quality_score=None,  # Possibly determined later during alignment
+                # Possibly determined later during alignment
+                quality_score=None,
+                per_segment_quality_scores=None,
             )
             with open(metadata_file, "w") as f:
                 json.dump(asdict(session_metadata_instance), f, indent=2)
@@ -251,7 +259,7 @@ def main() -> None:
             force_reprocess=args.force_reprocess,
             force_rescore=args.force_rescore,
             failure_threshold=args.failure_threshold,
-            session_ids=args.session_ids
+            session_ids=args.session_ids,
         )
 
 

@@ -16,4 +16,5 @@ class SessionMetadata(EntryMetadata):
     document_source_type: str
     year_of_birth: int | None
     biological_sex: str | None
-    quality_score: float | None
+    quality_score: float | None = None
+    per_segment_quality_scores: list[dict[str, float]] | None = None
