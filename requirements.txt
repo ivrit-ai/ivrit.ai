@@ -1,10 +1,12 @@
 backoff
+boto3==1.36.21
 datasets
 faster-whisper<1.1.0
 flask
 Flask-OAuthlib
 librosa
 mutagen
+hebrew
 numpy<2
 openai-whisper
 pydub
@@ -16,6 +18,7 @@ transformers
 feedparser
 openai
 python-dotenv
+psycopg==3.2.4
 jiwer
 pandas
 yt_dlp
@@ -28,4 +31,4 @@ pydantic
 pyodata
 python-docx
 nemo_toolkit[asr]
-stable-ts
+stable-ts==2.18.3
