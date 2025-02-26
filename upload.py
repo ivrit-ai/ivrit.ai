@@ -8,6 +8,7 @@ import datasets
 from utils import utils
 
 import mutagen.mp3
+from sources.upload import upload_dataset
 
 
 def create_transcripts_dataset(args):
@@ -54,6 +55,7 @@ def create_transcripts_dataset(args):
 
     return ds
 
+
 def create_eval_dataset(args):
     files = utils.find_files(args.root_dir, args.skip_dir, [".mp3"])
 
@@ -69,7 +71,7 @@ def create_eval_dataset(args):
 
         uuid = f"{source}/{episode}/{segment}"
 
-        text = file.with_suffix('.txt').read_text()
+        text = file.with_suffix(".txt").read_text()
 
         uuids.append(uuid)
         texts.append(text)
@@ -77,9 +79,10 @@ def create_eval_dataset(args):
     ds = datasets.Dataset.from_dict({"audio": files, "uuid": uuids, "text": texts})
     ds = ds.cast_column("audio", datasets.Audio())
 
-    ds = datasets.DatasetDict({"test" : ds})
+    ds = datasets.DatasetDict({"test": ds})
 
     return ds
+
 
 def create_audio_dataset(args):
     files = utils.find_files(args.root_dir, args.skip_dir, [".mp3", ".mp4"])
@@ -142,14 +145,34 @@ def create_audio_dataset(args):
     return ds
 
 
+def upload_normalized_dataset(args):
+    if args.skip_dir:
+        raise NotImplementedError("Skipping directories not supported for normalized datasets")
+    if len(args.root_dir) != 1:
+        raise ValueError("Only one root directory is supported for normalized datasets")
+
+    upload_dataset(
+        args.root_dir[0],
+        args.dataset,
+        create_as_private=not args.create_as_public,
+        hf_token=args.hf_token,
+    )
+
+
 def initialize_dataset(args):
     # Iterate over each root directory
     if args.transcripts:
         ds = create_transcripts_dataset(args)
     elif args.eval:
         ds = create_eval_dataset(args)
-    else:
+    elif args.splits:
         ds = create_audio_dataset(args)
+    else:
+        # upload the folder - not as a "Dataset" object, simply
+        # list of files to maintain flexibility in content structure
+        upload_normalized_dataset(args)
+        # No further processing required
+        return
 
     # For now, uploading a dataset of >200GB tends to fail, so we generate a local DB
     # and upload it using git lfs.
@@ -179,11 +202,15 @@ if __name__ == "__main__":
         default=[],
         help="Directories to skip. Can be passed multiple times.",
     )
+    parser.add_argument(
+        "--create_as_public", action="store_true", help="Create as a public dataset if it does not exist."
+    )
     parser.add_argument("--dataset", type=str, required=True, help="The dataset name to upload.")
     parser.add_argument("--hf-token", type=str, required=False, help="The HuggingFace token.")
     parser.add_argument("--splits", action="store_true", help="This is a splits dataset.")
     parser.add_argument("--transcripts", action="store_true", help="This is a transcripts dataset.")
     parser.add_argument("--eval", action="store_true", help="This is a evaluation dataset.")
+    parser.add_argument("--normalized", action="store_true", help="This is a normalized source dataset.")
 
     # Parse the arguments
     args = parser.parse_args()
