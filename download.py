@@ -1,9 +1,11 @@
 import sys
 
 from sources.crowd_recital.download import main as crowd_recital_main
+from sources.knesset.download import main as knesset_main
 
 source_to_main = {
     "crowd_recital": crowd_recital_main,
+    "knesset": knesset_main,
 }
 
 
