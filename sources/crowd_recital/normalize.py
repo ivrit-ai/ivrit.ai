@@ -168,10 +168,8 @@ def normalize_sessions(
                 continue
 
             try:
-                # load the audio file
-                audio_data = load_audio_in_whisper_format(str(audio_file))
                 align_result: stable_whisper.WhisperResult = model.align(
-                    audio_data, whisper_result, language, failure_threshold=failure_threshold
+                    str(audio_file), whisper_result, language, failure_threshold=failure_threshold
                 )
             except Exception as e:
                 tqdm.write(f" - Alignment failed for session {session_dir.name}: {e}")

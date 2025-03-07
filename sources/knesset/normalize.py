@@ -10,7 +10,6 @@ from tqdm import tqdm
 
 from sources.knesset.metadata import PlenumMetadata
 from utils.vtt import vtt_to_whisper_result
-from utils.audio import load_audio_in_whisper_format
 
 # Add these constants at the top of the file
 DEFAULT_ALIGN_MODEL = "ivrit-ai/whisper-large-v3-turbo-ct2"
@@ -168,10 +167,8 @@ def normalize_plenums(
                 continue
 
             try:
-                # load the audio file
-                audio_data = load_audio_in_whisper_format(str(audio_file))
                 align_result: stable_whisper.WhisperResult = model.align(
-                    audio_data, whisper_result, language, failure_threshold=failure_threshold
+                    str(audio_file), whisper_result, language, failure_threshold=failure_threshold
                 )
             except Exception as e:
                 tqdm.write(f" - Alignment failed for plenum {plenum_dir.name}: {e}")

@@ -273,7 +273,7 @@ def main() -> None:
             output_dir,
             align_model=args.align_model,
             align_device=args.align_device,
-            force_normalize_reprocess=args.force_reprocess,
+            force_normalize_reprocess=args.force_normalize_reprocess or args.force_reprocess,
             force_rescore=args.force_rescore,
             failure_threshold=args.failure_threshold,
             plenum_ids=args.plenum_ids,
