@@ -1,5 +1,4 @@
 import argparse
-import json
 import pathlib
 
 import boto3
@@ -8,21 +7,9 @@ from botocore.exceptions import ClientError
 from psycopg.rows import dict_row
 from tqdm import tqdm
 
-from sources.crowd_recital.metadata import SessionMetadata, source_id, source_type
 from sources.crowd_recital.manifest import build_manifest
+from sources.crowd_recital.metadata import SessionMetadata, source_id, source_type
 from sources.crowd_recital.normalize import add_normalize_args, normalize_sessions
-
-
-def load_download_state(state_file: pathlib.Path) -> dict:
-    if state_file.exists():
-        with open(state_file, "r") as f:
-            return json.load(f)
-    return {}
-
-
-def save_download_state(state: dict, state_file: pathlib.Path) -> None:
-    with open(state_file, "w") as f:
-        json.dump(state, f, indent=2)
 
 
 def list_recording_sessions(s3_client, bucket: str, prefix: str = "") -> list:
