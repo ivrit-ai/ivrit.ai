@@ -1,88 +1,50 @@
-import argparse
 import json
 import pathlib
-import sys
-from dataclasses import asdict
+from typing import List, Optional
 
-import numpy as np
-import stable_whisper
-from tqdm import tqdm
+from librosa import ex
 
+from sources.common.normalize import (
+    DEFAULT_ALIGN_DEVICE,
+    DEFAULT_ALIGN_MODEL,
+    DEFAULT_FAILURE_THRESHOLD,
+    BaseNormalizer,
+)
+from sources.common.normalize import add_common_normalize_args as add_normalize_args
 from sources.crowd_recital.metadata import SessionMetadata
-from utils.vtt import vtt_to_whisper_result
-from utils.audio import load_audio_in_whisper_format
-
-# Add these constants at the top of the file
-DEFAULT_ALIGN_MODEL = "ivrit-ai/whisper-large-v3-turbo-ct2"
-DEFAULT_ALIGN_DEVICE = "auto"
-DEFAULT_FAILURE_THRESHOLD = 0.2
 
 
-def calculate_quality_score(align_result: stable_whisper.WhisperResult, session_name="") -> float:
-    """Calculate the quality score based on the median word probabilities from the alignment result."""
-    try:
-        per_segment_scores = []
-        all_word_probs = []
+class CrowdRecitalNormalizer(BaseNormalizer):
+    """Normalizer for crowd recital entries."""
 
-        segments = list(align_result.segments)
-        for segment in segments:
-            segment_word_probs = []
-            if segment.has_words:
-                for word in segment.words:
-                    if hasattr(word, "probability"):
-                        prob = word.probability
-                        segment_word_probs.append(prob)
-                        all_word_probs.append(prob)
+    def get_entry_id(self, entry_dir: pathlib.Path) -> str:
+        """Get the session ID from the directory name."""
+        return entry_dir.name
 
-            if segment_word_probs:
-                per_segment_scores.append(
-                    {
-                        "start": segment.start,
-                        "end": segment.end,
-                        "probability": round(float(np.median(segment_word_probs)), 4),
-                    }
-                )
+    def get_audio_file(self, entry_dir: pathlib.Path) -> pathlib.Path:
+        """Get the audio file path for the session."""
+        return entry_dir / "audio.mka"
 
-        global_quality_score = round(float(np.median(all_word_probs)), 4) if all_word_probs else 0.0
+    def get_language(self, metadata: SessionMetadata) -> str:
+        """Get the language for the session."""
+        doc_lang = metadata.document_language.lower()
+        if doc_lang != "he":
+            raise ValueError(f"Unsupported language '{doc_lang}'. Only 'he' is supported.")
+        return doc_lang
 
-    except Exception as e:
-        if session_name:
-            tqdm.write(f" - Failed to calculate quality score for session {session_name}: {e}")
-        global_quality_score = 0.0
-        per_segment_scores = []
+    def get_duration(self, metadata: SessionMetadata) -> float:
+        """Get the duration from metadata."""
+        return metadata.session_duration
 
-    return global_quality_score, per_segment_scores
+    def load_metadata(self, meta_file: pathlib.Path) -> SessionMetadata:
+        """Load session metadata from file."""
+        with open(meta_file, "r", encoding="utf-8") as f:
+            return SessionMetadata(**json.load(f))
 
-
-def add_normalize_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--align-model",
-        type=str,
-        default=DEFAULT_ALIGN_MODEL,
-        help=f"Alignment model to use (default: {DEFAULT_ALIGN_MODEL})",
-    )
-    parser.add_argument(
-        "--align-device",
-        type=str,
-        default=DEFAULT_ALIGN_DEVICE,
-        help=f"Device for alignment. Use 'auto' to use cuda if available otherwise cpu (default: {DEFAULT_ALIGN_DEVICE})",
-    )
-    parser.add_argument(
-        "--force-reprocess",
-        action="store_true",
-        help="Force reprocessing sessions even if transcript.aligned.vtt exists",
-    )
-    parser.add_argument(
-        "--force-rescore",
-        action="store_true",
-        help="Force recalculation of quality score even if aligned transcript exists",
-    )
-    parser.add_argument(
-        "--failure-threshold",
-        type=float,
-        default=DEFAULT_FAILURE_THRESHOLD,
-        help=f"Failure threshold for alignment - portion of segments with 0 length tolerated before failing the alignment (default: {DEFAULT_FAILURE_THRESHOLD})",
-    )
+    def save_metadata(self, meta_file: pathlib.Path, metadata: SessionMetadata) -> None:
+        """Save session metadata to file."""
+        with open(meta_file, "w", encoding="utf-8") as f:
+            f.write(metadata.model_dump_json(indent=2))
 
 
 def normalize_sessions(
@@ -92,130 +54,34 @@ def normalize_sessions(
     force_reprocess: bool = False,
     force_rescore: bool = False,
     failure_threshold: float = DEFAULT_FAILURE_THRESHOLD,
-    session_ids: list[str] = None,
+    session_ids: Optional[List[str]] = None,
 ) -> None:
-    # Validate input folder exists before proceeding
-    if not input_folder.exists() or not input_folder.is_dir():
-        print(f"Input folder '{input_folder}' does not exist or is not a directory.", file=sys.stderr)
-        return
+    """
+    Normalize crowd recital sessions.
 
-    # Resolve device: if 'auto', use cuda if available for better performance
-    device = align_device
-    if device == "auto":
-        try:
-            import torch
+    Args:
+        input_folder: Path to the folder containing session directories
+        align_model: Model to use for alignment
+        align_device: Device to use for alignment
+        force_reprocess: Whether to force reprocessing even if aligned transcript exists
+        force_rescore: Whether to force recalculation of quality score
+        failure_threshold: Threshold for alignment failure
+        session_ids: Optional list of session IDs to process (if None, process all)
+    """
+    # Create normalizer
+    normalizer = CrowdRecitalNormalizer(
+        align_model=align_model,
+        align_device=align_device,
+        failure_threshold=failure_threshold,
+    )
 
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-        except ImportError:
-            device = "cpu"
+    # Normalize sessions
+    normalizer.normalize_entries(
+        input_folder=input_folder,
+        force_reprocess=force_reprocess,
+        force_rescore=force_rescore,
+        entry_ids=session_ids,
+    )
 
-    # Load the alignment model with int8 quantization for memory efficiency
-    try:
-        model = stable_whisper.load_faster_whisper(align_model, device=device, compute_type="int8")
-    except Exception as e:
-        print(f"Failed to load alignment model: {e}", file=sys.stderr)
-        return
 
-    # Find all session directories by looking for metadata.json files
-    meta_files = list(input_folder.glob("*/metadata.json"))
-    if session_ids:
-        meta_files = [mf for mf in meta_files if mf.parent.name in session_ids]
-
-    if not meta_files:
-        print("No session metadata.json files found in input folder.")
-        return
-
-    # Process each session with progress tracking
-    for meta_file in tqdm(meta_files, desc="Normalizing sessions"):
-        session_dir = meta_file.parent
-        tqdm.write(f"Processing session: {session_dir.name}")
-
-        aligned_transcript_file = session_dir / "transcript.aligned.json"
-        need_align = force_reprocess or (not aligned_transcript_file.exists())
-        need_rescore = force_rescore or need_align
-        if not (need_align or need_rescore):
-            continue
-
-        try:
-            with open(meta_file, "r", encoding="utf-8") as f:
-                metadata = SessionMetadata(**json.load(f))
-        except Exception as e:
-            tqdm.write(f" - Failed to read metadata.json for session {session_dir.name}: {e}")
-            continue
-
-        if need_align:
-            # Check if session language is supported
-            doc_lang = metadata.document_language.lower()
-            if doc_lang != "he":
-                tqdm.write(
-                    f" - Skipping session {session_dir.name}: unsupported language '{doc_lang}'. Only 'he' is supported."
-                )
-                continue
-            language = doc_lang
-
-            audio_file = session_dir / "audio.mka"
-            transcript_vtt = session_dir / "transcript.vtt"
-            if not audio_file.exists() or not transcript_vtt.exists():
-                tqdm.write(f" - Skipping session {session_dir.name} because required files are missing.")
-                continue
-
-            try:
-                with open(transcript_vtt, "r", encoding="utf-8") as f:
-                    vtt_content = f.read()
-                whisper_result = vtt_to_whisper_result(vtt_content)
-            except Exception as e:
-                tqdm.write(f" - Error processing transcript.vtt for session {session_dir.name}: {e}")
-                continue
-
-            try:
-                align_result: stable_whisper.WhisperResult = model.align(
-                    str(audio_file), whisper_result, language, failure_threshold=failure_threshold
-                )
-            except Exception as e:
-                tqdm.write(f" - Alignment failed for session {session_dir.name}: {e}")
-                continue
-        else:
-            try:
-                align_result = stable_whisper.WhisperResult(str(aligned_transcript_file))
-            except Exception as e:
-                tqdm.write(f" - Failed to load aligned transcript for session {session_dir.name}: {e}")
-                continue
-
-        quality_score, per_segment_scores = calculate_quality_score(align_result, session_dir.name)
-        metadata.quality_score = quality_score
-        metadata.per_segment_quality_scores = per_segment_scores
-
-        segments = list(align_result.segments)
-        segments_count = len(segments)
-        words_count = 0
-        total_segment_duration = 0
-        for segment in segments:
-            # Count words if available
-            if segment.has_words and hasattr(segment, "words"):
-                words_count += len(segment.words)
-            total_segment_duration += (segment.end - segment.start)
-        avg_words_per_segment = words_count / segments_count if segments_count > 0 else 0
-        avg_segment_duration = total_segment_duration / segments_count if segments_count > 0 else 0
-        avg_words_per_minute = words_count / (metadata.session_duration / 60) if metadata.session_duration > 0 else 0
-
-        metadata.segments_count = segments_count
-        metadata.words_count = words_count
-        metadata.avg_words_per_segment = round(avg_words_per_segment, 4)
-        metadata.avg_segment_duration = round(avg_segment_duration, 4)
-        metadata.avg_words_per_minute = round(avg_words_per_minute, 4)
-
-        try:
-            with open(meta_file, "w", encoding="utf-8") as f:
-                json.dump(asdict(metadata), f, indent=2)
-        except Exception as e:
-            tqdm.write(f" - Failed to update metadata.json for session {session_dir.name}: {e}")
-            continue
-
-        if need_align:
-            try:
-                align_result.save_as_json(str(aligned_transcript_file))
-            except Exception as e:
-                tqdm.write(f" - Failed to save aligned transcript for session {session_dir.name}: {e}")
-                continue
-
-        tqdm.write(f" - Processed session {session_dir.name}: quality score = {quality_score}")
+__all__ = ["normalize_sessions", "add_normalize_args"]

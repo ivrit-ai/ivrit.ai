@@ -1,7 +1,6 @@
 import argparse
 import json
 import pathlib
-from dataclasses import asdict
 
 import boto3
 import psycopg
@@ -11,8 +10,7 @@ from tqdm import tqdm
 
 from sources.crowd_recital.metadata import SessionMetadata, source_id, source_type
 from sources.crowd_recital.manifest import build_manifest
-
-from .normalize import add_normalize_args, normalize_sessions
+from sources.crowd_recital.normalize import add_normalize_args, normalize_sessions
 
 
 def load_download_state(state_file: pathlib.Path) -> dict:
@@ -234,7 +232,7 @@ def main() -> None:
             per_segment_quality_scores=None,
         )
         with open(metadata_file, "w") as f:
-            json.dump(asdict(session_metadata_instance), f, indent=2)
+            f.write(session_metadata_instance.model_dump_json(indent=2))
 
     # After downloads complete, process normalization if not skipped
     if not args.skip_normalize:
@@ -243,7 +241,7 @@ def main() -> None:
             output_dir,
             align_model=args.align_model,
             align_device=args.align_device,
-            force_reprocess=args.force_reprocess,
+            force_reprocess=args.force_normalize_reprocess,
             force_rescore=args.force_rescore,
             failure_threshold=args.failure_threshold,
             session_ids=args.session_ids,

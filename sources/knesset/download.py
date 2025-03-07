@@ -1,17 +1,13 @@
 import argparse
-import json
-import os
 import pathlib
-import shutil
-from dataclasses import asdict
 from typing import List, Optional, Tuple
 
 from tqdm import tqdm
 
-from sources.knesset.metadata import PlenumMetadata, plenum_source_id, source_type
-from sources.knesset.manifest import build_manifest
-from sources.knesset.normalize import add_normalize_args, normalize_plenums
 from sources.knesset.extraction import process_transcripts
+from sources.knesset.manifest import build_manifest
+from sources.knesset.metadata import PlenumMetadata, plenum_source_id, source_type
+from sources.knesset.normalize import add_normalize_args, normalize_plenums
 from utils.audio import extract_audio_from_media, get_audio_info
 
 
@@ -259,7 +255,7 @@ def main() -> None:
             # Save metadata
             metadata_file = plenum_output_dir / "metadata.json"
             with open(metadata_file, "w", encoding="utf-8") as f:
-                json.dump(asdict(plenum_metadata), f, indent=2)
+                f.write(plenum_metadata.model_dump_json(indent=2))
 
             tqdm.write(f" - Successfully processed plenum {plenum_id}")
         except Exception as e:
