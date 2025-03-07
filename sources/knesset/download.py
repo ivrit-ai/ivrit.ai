@@ -282,4 +282,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    print("This module is not intended to be executed directly. Please use the top-level download.py.", file=sys.stderr)
