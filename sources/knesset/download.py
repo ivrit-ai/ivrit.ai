@@ -1,5 +1,6 @@
 import argparse
 import pathlib
+import re
 from typing import List, Optional, Tuple
 
 from tqdm import tqdm
@@ -44,6 +45,28 @@ def find_protocol_html_files(plenum_transcripts_dir: pathlib.Path) -> List[pathl
         return []
 
     return list(plenum_transcripts_dir.glob(f"protocol_*.html"))
+
+
+def extract_date_from_media_filename(media_path: pathlib.Path) -> Optional[str]:
+    """
+    Extract the date from the media filename in the format YYYY_MM_DD and convert it to ISO format YYYY-MM-DD.
+    
+    Args:
+        media_path: Path to the media file
+        
+    Returns:
+        Optional[str]: The date in ISO format (YYYY-MM-DD) or None if the pattern doesn't match
+    """
+    filename = media_path.name
+    # Pattern to match YYYY_MM_DD at the beginning of the filename
+    date_pattern = re.compile(r'^(\d{4})_(\d{2})_(\d{2})_')
+    match = date_pattern.match(filename)
+    
+    if match:
+        year, month, day = match.groups()
+        return f"{year}-{month}-{day}"
+    
+    return None
 
 
 def process_av(
@@ -242,6 +265,13 @@ def main() -> None:
             if not av_success:
                 tqdm.write(f" - Failed to process AV for plenum {plenum_id}. Skipping.")
                 continue
+                
+            # Extract plenum date from media filename
+            plenum_date = extract_date_from_media_filename(media_path)
+            if plenum_date:
+                tqdm.write(f" - Extracted plenum date: {plenum_date}")
+            else:
+                tqdm.write(f" - Could not extract plenum date from filename: {media_path.name}")
 
             # Create metadata
             plenum_metadata = PlenumMetadata(
@@ -250,6 +280,7 @@ def main() -> None:
                 source_entry_id=plenum_id,
                 plenum_id=plenum_id,
                 duration=duration,
+                plenum_date=plenum_date,
             )
 
             # Save metadata

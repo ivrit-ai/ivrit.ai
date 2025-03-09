@@ -13,3 +13,4 @@ class PlenumMetadata(NormalizedEntryMetadata):
     plenum_id: str
     duration: Optional[float] = None
     title: Optional[str] = None
+    plenum_date: Optional[str] = None
