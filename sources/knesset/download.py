@@ -15,7 +15,7 @@ def find_media_file(plenum_dir: pathlib.Path) -> Optional[pathlib.Path]:
     """Find the media file (mp3, mp4, or wmv) in the plenum directory."""
 
     found_media_files = []
-    for ext in [".mp3", ".mp4", ".wmv"]:
+    for ext in [".mp3", ".mp4", ".wmv", "avi"]:
         for file in plenum_dir.glob(f"*{ext}"):
             found_media_files.append(file)
 
