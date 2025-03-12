@@ -407,7 +407,67 @@ def save_timestamp_index_to_csv(timestamp_segments: List[TimedSegment], output_p
             writer.writerow([segment.start_loc, segment.end_loc, segment.timestamp])
 
 
-max_slice_time_to_merge_seconds = 2
+max_slice_gap_to_merge_seconds = 2
+fallback_avg_word_duration = 0.42
+max_duration_to_consider_in_avg_word_duration = 10
+max_expected_to_actual_duration_sanity_ratio = 3
+max_expected_duration_to_merge_small_gap_slices = 15
+
+
+def expected_duration_of_text(text: str, avg_word_duration: float) -> float:
+    """
+    Estimate the duration of text based on word count and average word duration.
+
+    Args:
+        text: The input text to analyze
+        avg_word_duration: Average duration of a word in seconds
+
+    Returns:
+        Estimated duration of the text in seconds
+    """
+    # Count words by splitting on whitespace
+    words = text.split()
+    word_count = len(words)
+
+    # Calculate expected duration
+    avg_word_duration = avg_word_duration or fallback_avg_word_duration
+    duration = word_count * avg_word_duration
+
+    return duration
+
+
+def update_word_duration_stats(
+    text: str, actual_duration: float, avg_word_duration: float, alpha: float = 0.98
+) -> float:
+    """
+    Update word duration statistics using exponential moving average.
+
+    Args:
+        text: The input text
+        avg_word_duration: Current average word duration in seconds
+        alpha: EMA weight factor (default: 0.98)
+
+    Returns:
+        Updated average word duration in seconds
+    """
+    # Use fallback value if avg_word_duration is None or 0
+    if avg_word_duration is None or avg_word_duration == 0:
+        avg_word_duration = fallback_avg_word_duration  # Using 0.4 as provided
+
+    # Count words
+    words = text.split()
+    word_count = len(words)
+
+    if word_count == 0:
+        return avg_word_duration  # No update if no words
+
+    # Calculate new word duration rate
+    new_word_duration = actual_duration / word_count
+
+    # Apply exponential moving average
+    updated_avg_word_duration = alpha * avg_word_duration + (1 - alpha) * new_word_duration
+
+    return updated_avg_word_duration
 
 
 def create_recording_transcript_vtt(text: str, time_segments: List[TimedSegment]) -> WebVTT:
@@ -417,6 +477,9 @@ def create_recording_transcript_vtt(text: str, time_segments: List[TimedSegment]
 
     merging_next = False
     merge_start_loc = None
+    tracked_avg_word_duration = None
+
+    tmp_track = []
 
     for i, segment in enumerate(time_segments):
         is_not_last = i < len(time_segments) - 1
@@ -450,17 +513,46 @@ def create_recording_transcript_vtt(text: str, time_segments: List[TimedSegment]
                     merging_next = True
                     merge_start_loc = slice_start_loc
 
+            ends_with_punctuation = re.search(r"[,.!?:]$", extracted_text_for_slice[-10:].strip())
+
+            expected_duration_for_this_segment = expected_duration_of_text(
+                extracted_text_for_slice, tracked_avg_word_duration
+            )
+
             # If not merging already - consider too short slices (by time) to also be joined.
+            # Only do that if this is not already a too-long slice.
             # measure the time span from this to the next segment. (we merge forward)
-            if not merging_next and is_not_last:
-                next_segment = time_segments[i + 1]
-                if next_segment.timestamp - segment.timestamp < max_slice_time_to_merge_seconds:
+            # but only if it does not end with punctuation - which will be a good place to slice anyway.
+            allow_small_gap_merge = expected_duration_for_this_segment < max_expected_duration_to_merge_small_gap_slices
+            if allow_small_gap_merge and not ends_with_punctuation and not merging_next and is_not_last:
+                expected_end_at = segment.timestamp + expected_duration_for_this_segment
+                if next_ts - expected_end_at <= max_slice_gap_to_merge_seconds:
                     merging_next = True
                     merge_start_loc = slice_start_loc
 
-            # Only id we are not awaiting a future merge - add the caption
+            # Only if we are not awaiting a future merge - add the caption
             if not merging_next:
-                vtt.captions.append(create_caption(extracted_text_for_slice, segment.timestamp, next_ts))
+                duration_for_this_segment = next_ts - segment.timestamp
+                if duration_for_this_segment <= max_duration_to_consider_in_avg_word_duration:
+                    tracked_avg_word_duration = update_word_duration_stats(
+                        extracted_text_for_slice, duration_for_this_segment, tracked_avg_word_duration
+                    )
+                else:
+                    # For sanity - if the segment is too long to make sense - use the expected duration
+                    if (
+                        duration_for_this_segment
+                        > max_expected_to_actual_duration_sanity_ratio * expected_duration_for_this_segment
+                    ):
+                        duration_for_this_segment = expected_duration_for_this_segment
+
+                vtt.captions.append(
+                    create_caption(
+                        extracted_text_for_slice, segment.timestamp, segment.timestamp + duration_for_this_segment
+                    )
+                )
+
+            tmp_track.append(tracked_avg_word_duration)
+
     return vtt
 
 
