@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Union
 
 import stable_whisper
+from faster_whisper import WhisperModel
 from stable_whisper.whisper_compatibility import SAMPLE_RATE
 from tqdm import tqdm
 
@@ -18,7 +19,7 @@ from utils.vtt import vtt_to_whisper_result
 def align_transcript_to_audio(
     audio_file: Path,
     transcript: Union[Path, stable_whisper.result.WhisperResult],
-    model: str = "ivrit-ai/whisper-large-v3-turbo-ct2",
+    model: Union[str, WhisperModel] = "ivrit-ai/whisper-large-v3-turbo-ct2",
     device: str = "auto",
     align_model_compute_type: str = "int8",
     language: str = "he",
@@ -65,7 +66,9 @@ def align_transcript_to_audio(
     else:
         unaligned = transcript
 
-    model = get_breakable_align_model(model, device, align_model_compute_type)
+    # If model is a string, load it using get_breakable_align_model
+    if isinstance(model, str):
+        model = get_breakable_align_model(model, device, align_model_compute_type)
 
     audio_metadata = stable_whisper.audio.utils.get_metadata(audio_file)
     audio_duration = audio_metadata["duration"] or 0

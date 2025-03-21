@@ -3,6 +3,7 @@ import pathlib
 from typing import List, Optional
 
 from alignment.align import align_transcript_to_audio
+from alignment.utils import get_breakable_align_model
 from sources.common.normalize import (
     DEFAULT_ALIGN_DEVICE,
     DEFAULT_ALIGN_MODEL,
@@ -48,7 +49,15 @@ class KnessetNormalizer(BaseNormalizer):
         """Save plenum metadata to file."""
         with open(meta_file, "w", encoding="utf-8") as f:
             f.write(metadata.model_dump_json(indent=2))
-            
+
+    def get_model(self):
+        """Get the alignment model using get_breakable_align_model."""
+        if self.model is None:
+            self.model = get_breakable_align_model(
+                self.align_model, self.align_device, "int8"  # Using int8 as the default compute type
+            )
+        return self.model
+
     def normalize_entry(
         self,
         entry_dir: pathlib.Path,
@@ -57,17 +66,18 @@ class KnessetNormalizer(BaseNormalizer):
     ) -> bool:
         """
         Override the base normalize_entry method to use align_transcript_to_audio instead of stable_ts directly.
-        
+
         Args:
             entry_dir: Directory containing the entry files
             force_reprocess: Whether to force reprocessing even if aligned transcript exists
             force_rescore: Whether to force recalculation of quality score
-            
+
         Returns:
             True if processing was successful, False otherwise
         """
         entry_id = self.get_entry_id(entry_dir)
         from tqdm import tqdm
+
         tqdm.write(f"Processing entry: {entry_id}")
 
         meta_file = entry_dir / "metadata.json"
@@ -99,13 +109,14 @@ class KnessetNormalizer(BaseNormalizer):
                 return False
 
             try:
+                # Get the model and pass it to align_transcript_to_audio
+                model = self.get_model()
                 align_result = align_transcript_to_audio(
                     audio_file=audio_file,
                     transcript=transcript_vtt,
-                    model=self.align_model,
-                    device=self.align_device,
+                    model=model,
                     language=language,
-                    zero_duration_segments_failure_ratio=self.failure_threshold
+                    zero_duration_segments_failure_ratio=self.failure_threshold,
                 )
             except Exception as e:
                 tqdm.write(f" - Alignment failed for entry {entry_id}: {e}")
@@ -113,6 +124,7 @@ class KnessetNormalizer(BaseNormalizer):
         else:
             try:
                 import stable_whisper
+
                 align_result = stable_whisper.WhisperResult(str(aligned_transcript_file))
             except Exception as e:
                 tqdm.write(f" - Failed to load aligned transcript for entry {entry_id}: {e}")
@@ -120,6 +132,7 @@ class KnessetNormalizer(BaseNormalizer):
 
         # Calculate quality score
         from sources.common.normalize import calculate_quality_score
+
         quality_score, per_segment_scores = calculate_quality_score(align_result, entry_id)
 
         # Update metadata with statistics
