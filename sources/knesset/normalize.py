@@ -50,7 +50,7 @@ class KnessetNormalizer(BaseNormalizer):
         with open(meta_file, "w", encoding="utf-8") as f:
             f.write(metadata.model_dump_json(indent=2))
 
-    def get_model(self):
+    def load_model(self):
         """Get the alignment model using get_breakable_align_model."""
         if self.model is None:
             self.model = get_breakable_align_model(
