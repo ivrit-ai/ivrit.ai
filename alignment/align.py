@@ -13,6 +13,7 @@ from alignment.utils import (
     get_confusion_zone,
     get_text_from_segments,
 )
+from alignment.seekable_audio_loader import SeekableAudioLoader
 from utils.vtt import vtt_to_whisper_result
 
 
@@ -94,17 +95,14 @@ def align_transcript_to_audio(
     progress_bar = tqdm(total=audio_duration, unit="sec", desc="Aligning transcript to audio")
     while not done:
         # Get the audio slice
-        audio = stable_whisper.audio.AudioLoader(
-            str(audio_file), sr=SAMPLE_RATE, stream=True, load_sections=[[slice_start, None]]
+        audio = SeekableAudioLoader(
+            str(audio_file), sr=SAMPLE_RATE, stream=True, load_sections=[[slice_start, None]], test_first_chunk=False
         )
 
         # Align it until it breaks
         aligned: stable_whisper.WhisperResult = model.align(
             audio, to_align_next, language=language, failure_threshold=zero_duration_segments_failure_ratio
         )
-
-        # rebase aligned segments to full audio
-        # aligned.offset_time(slice_start)
 
         # Check if done == No confusion zone exists
         confusion_zone_start, confusion_zone_end = get_confusion_zone(aligned)
