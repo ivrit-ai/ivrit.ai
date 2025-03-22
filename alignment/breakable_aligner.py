@@ -92,6 +92,7 @@ class BreakableAligner(Aligner):
             last_ts = 0.0
             premature_stop = False
             match_probs_ema = None
+            first_seen_ts = None
 
             while self._all_word_tokens:
                 audio_segment, seek = self.audio_loader.next_valid_chunk(self._seek_sample, self.n_samples)
@@ -110,6 +111,7 @@ class BreakableAligner(Aligner):
                 self._seg_word_tokens = [WordToken(wts.word, wts.tokens) for wts in self._curr_words]
 
                 last_ts = self._fallback(audio_segment.shape[-1])
+                first_seen_ts = first_seen_ts if first_seen_ts is not None else last_ts
 
                 if self._curr_words:
                     kept_words_probs = np.array([wt.probability for wt in self._curr_words])
@@ -140,7 +142,7 @@ class BreakableAligner(Aligner):
                         break
 
                 if (
-                    self.match_probs_ema_warmup_ends_at < self._time_offset
+                    self.match_probs_ema_warmup_ends_at < (last_ts - first_seen_ts)
                     and match_probs_ema is not None
                     and match_probs_ema < self.match_probs_ema_breakout_threshold
                 ):
@@ -154,14 +156,9 @@ class BreakableAligner(Aligner):
             result.append(self._temp_data.word)
         if not result:
             warnings.warn("Failed to align text.", stacklevel=2)
-        if self.failure_count > self.max_fail:
-            warnings.warn(
-                f"Alignment aborted. Failed word percentage exceeded {self.failure_threshold * 100}% at "
-                f"{format_timestamp(self._seek_sample / self.sample_rate)}.",
-            )
-        elif self._all_word_tokens:
+        if self._all_word_tokens and not premature_stop:
             last_ts_str = format_timestamp(result[-1].end if result else 0)
-            warnings.warn(
+            print(
                 f"Failed to align the last {len(self._all_word_tokens)}/{self._total_words} words after "
                 f"{last_ts_str}.",
             )
@@ -212,9 +209,8 @@ class BreakableAligner(Aligner):
             final_result.regroup(self.options.post.regroup)
 
         if fail_segs := len([None for s in final_result.segments if s.end - s.start <= 0]):
-            warnings.warn(
+            print(
                 f"{fail_segs}/{len(final_result.segments)} segments failed to align.",
-                stacklevel=2,
             )
 
         return final_result

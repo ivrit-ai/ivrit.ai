@@ -27,6 +27,8 @@ def align_transcript_to_audio(
     max_pre_confusion_zone_tries_before_skip: int = 2,
     unaligned_start_text_match_search_radius: int = 140,
     zero_duration_segments_failure_ratio: float = 0.2,
+    max_confusion_zone_skip_duration: int = 120,
+    min_confusion_zone_skip_duration: int = 15,
 ) -> stable_whisper.WhisperResult:
     """Align a transcript to audio using a robust, confusion-aware alignment algorithm.
 
@@ -57,6 +59,10 @@ def align_transcript_to_audio(
             text when finding the start of a confusion zone in the unaligned transcript.
         zero_duration_segments_failure_ratio: Threshold for the ratio of zero-duration segments
             to total segments, above which alignment is considered failed.
+        max_confusion_zone_skip_duration: When a skip over a confusion zone is needed -
+            What is the mexium allowed skip in seconds.
+        min_confusion_zone_skip_duration: When a skip over a confusion zone is needed -
+            What is the min allowed skip in seconds.
 
     Returns:
         A WhisperResult containing the aligned transcript.
@@ -92,16 +98,13 @@ def align_transcript_to_audio(
             str(audio_file), sr=SAMPLE_RATE, stream=True, load_sections=[[slice_start, None]]
         )
 
-        # Align it until it stops
+        # Align it until it breaks
         aligned: stable_whisper.WhisperResult = model.align(
             audio, to_align_next, language=language, failure_threshold=zero_duration_segments_failure_ratio
         )
 
-        # Update progress bar
-        progress_bar.update(slice_start)
-
         # rebase aligned segments to full audio
-        aligned.offset_time(slice_start)
+        # aligned.offset_time(slice_start)
 
         # Check if done == No confusion zone exists
         confusion_zone_start, confusion_zone_end = get_confusion_zone(aligned)
@@ -137,6 +140,9 @@ def align_transcript_to_audio(
             # point to audio start for next try
             slice_start = probable_segment_before_confusion_zone.end
 
+            # Update progress bar
+            progress_bar.update(slice_start - progress_bar.n)
+
             # Prepare not aligned text for next try
             to_align_next = get_text_from_segments(aligned.segments[probable_segment_before_confusion_zone.id + 1 :])
 
@@ -146,18 +152,21 @@ def align_transcript_to_audio(
                 # another pre confusion zone try is done
                 current_pre_confusion_zone_tries += 1
                 continue
-        else:
-            # Else - to_align_next is all the text we tried to align in this attempt
-            # of course we will skip some of it after deciding where to skip to
 
-            # Also, slice_start still points to where we need to start aligning
-            # from - again, probably we will skip forward soon
-            # but since there was no probable segment to mark the anchor the start of the confusion zone
-            # just assume the confusion zone start is the start of the audio
-            min_confusion_zone_start = slice_start
+        # Skiiping forward - to_align_next is all the text we tried to align in this attempt
+        # of course we will skip some of it after deciding where to skip to
+
+        # Assume confusion start where the audio starts.
+        min_confusion_zone_start = slice_start
 
         # skip the confusion zone if no pre confusion zone retry
         # is possible or allowed.
+
+        # Don't skip too much or too little forward
+        max_confusion_zone_end = max(max_confusion_zone_end, min_confusion_zone_start + min_confusion_zone_skip_duration)
+        max_confusion_zone_end = min(
+            min_confusion_zone_start + max_confusion_zone_skip_duration, max_confusion_zone_end
+        )
 
         progress_bar.write(f"Skipping confusion zone: {min_confusion_zone_start} - {max_confusion_zone_end}")
 
@@ -179,28 +188,41 @@ def align_transcript_to_audio(
         # of the entire text for the audio file
         text_at_start_of_confusion_zone = to_align_next[: unaligned_start_text_match_search_radius // 2]
 
-        # get segments from the unaligned around confusion zone to find the text within
-        # we assume timing is off by not too much, so we expand the search area a little
-        search_around_time = (
-            min_confusion_zone_start
-            if probable_segment_before_confusion_zone is None
-            else probable_segment_before_confusion_zone.end
-        )
-        search_in_unaligned_window_time_start = max(
-            # never search in unaligned parts already matched against
-            # so we reduce the risk of matching to the past
-            top_matched_unaligned_timestamp,
-            search_around_time - unaligned_start_text_match_search_radius,
-        )
-        search_in_unaligned_window_time_end = search_around_time + unaligned_start_text_match_search_radius
-        segments_around_confusion_zone = unaligned.get_content_by_time(
-            (search_in_unaligned_window_time_start, search_in_unaligned_window_time_end),
-            segment_level=True,
-        )
-        text_around_confusion_zone = get_text_from_segments(segments_around_confusion_zone)
+        search_tries_left = 3
+        search_radius_to_try = unaligned_start_text_match_search_radius
+        while search_tries_left > 0:
+            search_tries_left -= 1
+            
+            # get segments from the unaligned around confusion zone to find the text within
+            # we assume timing is off by not too much, so we expand the search area a little
+            search_around_time = (
+                min_confusion_zone_start
+                if probable_segment_before_confusion_zone is None
+                else probable_segment_before_confusion_zone.end
+            )
+            search_in_unaligned_window_time_start = max(
+                # never search in unaligned parts already matched against
+                # so we reduce the risk of matching to the past
+                top_matched_unaligned_timestamp,
+                search_around_time - search_radius_to_try,
+            )
+            search_in_unaligned_window_time_end = search_around_time + search_radius_to_try
+            segments_around_confusion_zone = unaligned.get_content_by_time(
+                (search_in_unaligned_window_time_start, search_in_unaligned_window_time_end),
+                segment_level=True,
+            )
+            text_around_confusion_zone = get_text_from_segments(segments_around_confusion_zone)
 
-        # where can we find the prefix text ?
-        found_at_text_idx = text_around_confusion_zone.find(text_at_start_of_confusion_zone)
+            # where can we find the prefix text ?
+            found_at_text_idx = text_around_confusion_zone.find(text_at_start_of_confusion_zone)
+            
+            # prepare for next try or break
+            if found_at_text_idx == -1:
+                search_radius_to_try *= 1.5
+            else:
+                break
+        
+        # If still cannot find - we crash
         if found_at_text_idx == -1:
             raise ValueError(
                 f"Could not find matching text in confusion zone, slice_start: {slice_start}\ntext: `{text_at_start_of_confusion_zone}`"
@@ -278,6 +300,9 @@ def align_transcript_to_audio(
 
         # next audio start is the confusion zone end
         slice_start = first_segment_to_continue_aligning.start
+
+        # Update progress bar
+        progress_bar.update(slice_start - progress_bar.n)
 
         # Forget prev confusion zone
         min_confusion_zone_start = 0

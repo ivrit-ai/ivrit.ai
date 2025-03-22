@@ -3,8 +3,6 @@ from types import MethodType
 
 import numpy as np
 import stable_whisper
-from stable_whisper.whisper_compatibility import SAMPLE_RATE
-
 
 def get_confusion_zone(
     aligned: stable_whisper.WhisperResult,
@@ -53,8 +51,8 @@ def get_confusion_zone(
         while window_words and window_words[0].end <= window_start:
             window_words.popleft()
 
-        # Compute durations
-        bad_durations = [w.end - w.start for w in window_words if w.probability < good_seg_prob_threshold]
+        # Compute durations (treat 0 words with some durations to capture their bad probs)
+        bad_durations = [max(0.1, w.end - w.start) for w in window_words if w.probability < good_seg_prob_threshold]
         good_durations = [w.end - w.start for w in window_words if w.probability >= good_seg_prob_threshold]
 
         total_bad = sum(bad_durations)
