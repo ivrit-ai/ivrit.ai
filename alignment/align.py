@@ -70,7 +70,7 @@ def align_transcript_to_audio(
     if isinstance(model, str):
         model = get_breakable_align_model(model, device, align_model_compute_type)
 
-    audio_metadata = stable_whisper.audio.utils.get_metadata(audio_file)
+    audio_metadata = stable_whisper.audio.utils.get_metadata(str(audio_file))
     audio_duration = audio_metadata["duration"] or 0
 
     # Initialize outer alignment loop

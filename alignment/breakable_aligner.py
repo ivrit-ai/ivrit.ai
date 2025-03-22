@@ -1,5 +1,5 @@
 import warnings
-from typing import List, Union
+from typing import List, Union, Optional
 
 import numpy as np
 import torch
@@ -236,9 +236,9 @@ def breakable_align(
     nonspeech_skip: Optional[float] = 5.0,
     fast_mode: bool = False,
     failure_threshold: Optional[float] = None,
-    match_probs_ema_alpha: Optional[float] = None,
-    match_probs_ema_breakout_threshold: Optional[float] = None,
-    match_probs_ema_warmup_ends_at: Optional[int] = None,
+    match_probs_ema_alpha: float = 0.95,
+    match_probs_ema_breakout_threshold: float = 0.5,
+    match_probs_ema_warmup_ends_at: int = 180,
     **options,
 ) -> Union[WhisperResult, None]:
     """Align text to audio with the ability to break out when confidence is too low.

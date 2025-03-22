@@ -109,12 +109,10 @@ class KnessetNormalizer(BaseNormalizer):
                 return False
 
             try:
-                # Get the model and pass it to align_transcript_to_audio
-                model = self.get_model()
                 align_result = align_transcript_to_audio(
                     audio_file=audio_file,
                     transcript=transcript_vtt,
-                    model=model,
+                    model=self.model,
                     language=language,
                     zero_duration_segments_failure_ratio=self.failure_threshold,
                 )
