@@ -69,7 +69,7 @@ class BreakableAligner(Aligner):
         """
         postfix = {}
         if bad_good_ratio is not None:
-            postfix["ratio"] = round(bad_good_ratio, 2)
+            postfix["err_ratio"] = round(bad_good_ratio, 2)
         if avg_prob is not None:
             postfix["avg_prob"] = round(avg_prob, 2)
         
@@ -144,7 +144,7 @@ class BreakableAligner(Aligner):
             total=self._initial_duration,
             unit="sec",
             disable=self.options.progress.verbose is not False,
-            desc="Align",
+            desc="Align attempt",
         ) as tqdm_pbar:
             result: List[BasicWordTiming] = []
             last_ts = 0.0

@@ -92,7 +92,7 @@ def align_transcript_to_audio(
     to_align_next = unaligned.text  # We aligns text not segments
 
     # Create a progress bar for the alignment process
-    progress_bar = tqdm(total=audio_duration, unit="sec", desc="Aligning transcript to audio")
+    progress_bar = tqdm(total=audio_duration, unit="sec", desc="Global alignment")
     while not done:
         # Get the audio slice
         audio = SeekableAudioLoader(
