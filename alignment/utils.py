@@ -4,6 +4,36 @@ from types import MethodType
 import numpy as np
 import stable_whisper
 
+def calculate_bad_good_prob_ratio(
+    words,
+    good_seg_prob_threshold: float = 0.4,
+):
+    """Calculate the ratio of bad to good word durations.
+    
+    This function categorizes words as "good" or "bad" based on their probability
+    and calculates the ratio of total duration of bad words to good words.
+    
+    Args:
+        words: A list of word objects with probability, start, and end attributes.
+        good_seg_prob_threshold: Probability threshold above which a word is considered good.
+        
+    Returns:
+        A tuple of (bad_to_good_ratio, total_bad_duration, total_good_duration).
+        If there are no good words, the ratio is set to float('inf').
+    """
+    # Compute durations (treat 0 words with some durations to capture their bad probs)
+    bad_durations = [max(0.1, w.end - w.start) for w in words if w.probability < good_seg_prob_threshold]
+    good_durations = [w.end - w.start for w in words if w.probability >= good_seg_prob_threshold]
+
+    total_bad = sum(bad_durations)
+    total_good = sum(good_durations)
+    
+    # Calculate ratio (handle division by zero)
+    ratio = float('inf') if total_good == 0 else (total_bad / total_good)
+    
+    return ratio, total_bad, total_good
+
+
 def get_confusion_zone(
     aligned: stable_whisper.WhisperResult,
     detection_window_duration: int = 120,
@@ -51,14 +81,10 @@ def get_confusion_zone(
         while window_words and window_words[0].end <= window_start:
             window_words.popleft()
 
-        # Compute durations (treat 0 words with some durations to capture their bad probs)
-        bad_durations = [max(0.1, w.end - w.start) for w in window_words if w.probability < good_seg_prob_threshold]
-        good_durations = [w.end - w.start for w in window_words if w.probability >= good_seg_prob_threshold]
-
-        total_bad = sum(bad_durations)
-        total_good = sum(good_durations)
-
-        if total_good == 0 or (total_bad / total_good) > bad_to_good_probs_detection_threshold:
+        # Calculate the ratio of bad to good word durations
+        ratio, _, _ = calculate_bad_good_prob_ratio(window_words, good_seg_prob_threshold)
+        
+        if ratio > bad_to_good_probs_detection_threshold:
             # Confusion window detected - return bounds
             return window_start, window_end
 

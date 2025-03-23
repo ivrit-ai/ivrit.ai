@@ -26,33 +26,36 @@ class BreakableAligner(Aligner):
     def __init__(
         self,
         *args,
-        match_probs_ema_alpha: float = 0.95,
-        match_probs_ema_breakout_threshold: float = 0.5,
-        match_probs_ema_warmup_ends_at: int = 180,
+        confusion_window_duration: int = 120,
+        confusion_warmup_duration: float = 10.0,
+        good_seg_prob_threshold: float = 0.4,
+        bad_to_good_ratio_threshold: float = 0.8,
         **kwargs,
     ):
         """Initialize the BreakableAligner.
 
         Args:
             *args: Arguments to pass to the parent Aligner class.
-            match_probs_ema_alpha: Alpha parameter for exponential moving average of match probabilities.
-                Higher values give more weight to past observations (0.0-1.0).
-            match_probs_ema_breakout_threshold: Threshold below which to break out of alignment.
-                If the EMA of match probabilities falls below this value, alignment stops.
-            match_probs_ema_warmup_ends_at: Time in seconds after which to start considering breakouts.
-                Breakouts are not triggered before this time to allow for initial alignment.
+            confusion_window_duration: Duration of the sliding window in seconds for confusion detection.
+            confusion_warmup_duration: Total word duration to accumulate before considering breakouts.
+                This ensures the window has enough data before making decisions.
+            good_seg_prob_threshold: Probability threshold above which a word is considered good.
+            bad_to_good_ratio_threshold: Threshold for the ratio of bad to good word durations.
+                If this threshold is exceeded, alignment stops.
             **kwargs: Additional keyword arguments to pass to the parent Aligner class.
         """
-        self.match_probs_ema_alpha = match_probs_ema_alpha
-        self.match_probs_ema_breakout_threshold = match_probs_ema_breakout_threshold
-        self.match_probs_ema_warmup_ends_at = match_probs_ema_warmup_ends_at
+        self.confusion_window_duration = confusion_window_duration
+        self.confusion_warmup_duration = confusion_warmup_duration
+        self.good_seg_prob_threshold = good_seg_prob_threshold
+        self.bad_to_good_ratio_threshold = bad_to_good_ratio_threshold
         super().__init__(*args, **kwargs)
 
     def _update_pbar(
         self,
         tqdm_pbar: tqdm,
         last_ts: float,
-        match_probs_ema: float = 0,
+        bad_good_ratio: float = None,
+        avg_prob: float = None,
         finish: bool = False,
     ):
         """Update the progress bar with current alignment information.
@@ -60,12 +63,65 @@ class BreakableAligner(Aligner):
         Args:
             tqdm_pbar: The progress bar to update.
             last_ts: The timestamp of the last processed segment.
-            match_probs_ema: The exponential moving average of match probabilities.
+            bad_good_ratio: The ratio of bad to good word durations.
+            avg_prob: The average probability of words in the window.
             finish: Whether this is the final update.
         """
-        if match_probs_ema is not None:
-            tqdm_pbar.set_postfix({"probs": round(match_probs_ema, 2)})
+        postfix = {}
+        if bad_good_ratio is not None:
+            postfix["ratio"] = round(bad_good_ratio, 2)
+        if avg_prob is not None:
+            postfix["avg_prob"] = round(avg_prob, 2)
+        
+        if postfix:
+            tqdm_pbar.set_postfix(postfix)
         super()._update_pbar(tqdm_pbar, last_ts, finish)
+
+    def update_word_prob_window(self, window_words, total_word_duration, new_words, current_time):
+        """Update the sliding window of word probabilities.
+        
+        This method adds new words to the sliding window, removes words that are outside
+        the window duration, and calculates the bad to good ratio if there is enough data.
+        
+        Args:
+            window_words: Deque of words in the current window.
+            total_word_duration: Total duration of words in the window.
+            new_words: New words to add to the window.
+            current_time: Current timestamp.
+            
+        Returns:
+            Tuple of (updated_window_words, updated_total_word_duration, bad_good_ratio, avg_probability).
+            If there is not enough data, bad_good_ratio and avg_probability will be None.
+        """
+        from alignment.utils import calculate_bad_good_prob_ratio
+        
+        # Add new words to the sliding window
+        for word in new_words:
+            window_words.append(word)
+            word_duration = max(0.1, word.end - word.start)
+            total_word_duration += word_duration
+        
+        # Remove words that are outside the window duration
+        window_start_time = current_time - self.confusion_window_duration
+        while window_words and window_words[0].end < window_start_time:
+            old_word = window_words.popleft()
+            old_word_duration = max(0.1, old_word.end - old_word.start)
+            total_word_duration -= old_word_duration
+        
+        # Calculate metrics if we have enough data
+        bad_good_ratio = None
+        avg_probability = None
+        if total_word_duration >= self.confusion_warmup_duration and window_words:
+            bad_good_ratio, _, _ = calculate_bad_good_prob_ratio(
+                window_words, 
+                self.good_seg_prob_threshold
+            )
+            
+            # Calculate average probability
+            probabilities = [word.probability for word in window_words]
+            avg_probability = np.mean(probabilities) if probabilities else None
+        
+        return window_words, total_word_duration, bad_good_ratio, avg_probability
 
     def align(
         self,
@@ -82,6 +138,8 @@ class BreakableAligner(Aligner):
                 setattr(self, k, options.pop(k))
         self.options.update(options)
 
+        from collections import deque
+
         with tqdm(
             total=self._initial_duration,
             unit="sec",
@@ -91,8 +149,13 @@ class BreakableAligner(Aligner):
             result: List[BasicWordTiming] = []
             last_ts = 0.0
             premature_stop = False
-            match_probs_ema = None
             first_seen_ts = None
+            
+            # Sliding window for confusion detection
+            window_words = deque()
+            total_word_duration = 0.0
+            current_bad_good_ratio = None
+            current_avg_prob = None
 
             while self._all_word_tokens:
                 audio_segment, seek = self.audio_loader.next_valid_chunk(self._seek_sample, self.n_samples)
@@ -113,17 +176,13 @@ class BreakableAligner(Aligner):
                 last_ts = self._fallback(audio_segment.shape[-1])
                 first_seen_ts = first_seen_ts if first_seen_ts is not None else last_ts
 
+                # Update the sliding window with new words
                 if self._curr_words:
-                    kept_words_probs = np.array([wt.probability for wt in self._curr_words])
-                    mean_kept_words_probs = np.mean(kept_words_probs)
-                    if match_probs_ema is None:
-                        match_probs_ema = mean_kept_words_probs
-                    match_probs_ema = (
-                        mean_kept_words_probs * (1 - self.match_probs_ema_alpha)
-                        + match_probs_ema * self.match_probs_ema_alpha
+                    window_words, total_word_duration, current_bad_good_ratio, current_avg_prob = self.update_word_prob_window(
+                        window_words, total_word_duration, self._curr_words, last_ts
                     )
-
-                self._update_pbar(tqdm_pbar, last_ts, match_probs_ema)
+                
+                self._update_pbar(tqdm_pbar, last_ts, current_bad_good_ratio, current_avg_prob)
 
                 result.extend(self._curr_words)
 
@@ -141,16 +200,16 @@ class BreakableAligner(Aligner):
                         tqdm_pbar.write("Breaking - too many 0-len segments")
                         break
 
+                # Check if we should break due to high bad/good ratio
                 if (
-                    self.match_probs_ema_warmup_ends_at < (last_ts - first_seen_ts)
-                    and match_probs_ema is not None
-                    and match_probs_ema < self.match_probs_ema_breakout_threshold
+                    current_bad_good_ratio is not None
+                    and current_bad_good_ratio > self.bad_to_good_ratio_threshold
                 ):
                     premature_stop = True
-                    tqdm_pbar.write("Breaking - probs too low")
+                    tqdm_pbar.write(f"Breaking - bad/good ratio too high: {current_bad_good_ratio:.2f}")
                     break
 
-            self._update_pbar(tqdm_pbar, last_ts, match_probs_ema, self.failure_count <= self.max_fail)
+            self._update_pbar(tqdm_pbar, last_ts, current_bad_good_ratio, current_avg_prob, self.failure_count <= self.max_fail)
 
         if not premature_stop and self._temp_data.word is not None:
             result.append(self._temp_data.word)
@@ -232,9 +291,10 @@ def breakable_align(
     nonspeech_skip: Optional[float] = 5.0,
     fast_mode: bool = False,
     failure_threshold: Optional[float] = None,
-    match_probs_ema_alpha: float = 0.95,
-    match_probs_ema_breakout_threshold: float = 0.5,
-    match_probs_ema_warmup_ends_at: int = 180,
+    confusion_window_duration: int = 120,
+    confusion_warmup_duration: float = 10.0,
+    good_seg_prob_threshold: float = 0.4,
+    bad_to_good_ratio_threshold: float = 0.8,
     **options,
 ) -> Union[WhisperResult, None]:
     """Align text to audio with the ability to break out when confidence is too low.
@@ -245,9 +305,10 @@ def breakable_align(
     Args:
         ... stable_ts params are documented in the base "align" function
         failure_threshold: Threshold for the ratio of failed words to total words.
-        match_probs_ema_alpha: Alpha parameter for EMA of match probabilities.
-        match_probs_ema_breakout_threshold: Threshold below which to break out of alignment.
-        match_probs_ema_warmup_ends_at: Time in seconds after which to start considering breakouts.
+        confusion_window_duration: Duration of the sliding window in seconds for confusion detection.
+        confusion_warmup_duration: Total word duration to accumulate before considering breakouts.
+        good_seg_prob_threshold: Probability threshold above which a word is considered good.
+        bad_to_good_ratio_threshold: Threshold for the ratio of bad to good word durations.
         **options: Additional options to pass to the aligner.
 
     Returns:
@@ -294,9 +355,10 @@ def breakable_align(
         nonspeech_skip=nonspeech_skip,
         fast_mode=fast_mode,
         failure_threshold=failure_threshold,
-        match_probs_ema_alpha=match_probs_ema_alpha,
-        match_probs_ema_breakout_threshold=match_probs_ema_breakout_threshold,
-        match_probs_ema_warmup_ends_at=match_probs_ema_warmup_ends_at,
+        confusion_window_duration=confusion_window_duration,
+        confusion_warmup_duration=confusion_warmup_duration,
+        good_seg_prob_threshold=good_seg_prob_threshold,
+        bad_to_good_ratio_threshold=bad_to_good_ratio_threshold,
         all_options=options,
     )
 
