@@ -3,6 +3,7 @@ import pathlib
 from typing import List, Optional
 
 from sources.common.normalize import (
+    DEFAULT_ALIGN_DEVICE_DENSITY,
     DEFAULT_ALIGN_MODEL,
     DEFAULT_FAILURE_THRESHOLD,
     BaseNormalizer,
@@ -49,6 +50,7 @@ def normalize_sessions(
     input_folder: pathlib.Path,
     align_model: str = DEFAULT_ALIGN_MODEL,
     align_devices: list[str] = [],
+    align_device_density: int = DEFAULT_ALIGN_DEVICE_DENSITY,
     force_normalize_reprocess: bool = False,
     force_rescore: bool = False,
     failure_threshold: float = DEFAULT_FAILURE_THRESHOLD,
@@ -71,6 +73,7 @@ def normalize_sessions(
     normalize_entries(
         input_folder=input_folder,
         align_devices=align_devices,
+        align_device_density=align_device_density,
         align_model=align_model,
         normalizer_class=CrowdRecitalNormalizer,
         failure_threshold=failure_threshold,

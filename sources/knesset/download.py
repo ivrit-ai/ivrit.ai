@@ -300,6 +300,7 @@ def main() -> None:
             output_dir,
             align_model=args.align_model,
             align_devices=args.align_devices,
+            align_device_density=args.align_device_density,
             force_normalize_reprocess=args.force_normalize_reprocess or args.force_reprocess,
             force_rescore=args.force_rescore,
             failure_threshold=args.failure_threshold,

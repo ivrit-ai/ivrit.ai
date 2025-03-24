@@ -5,6 +5,7 @@ from typing import List, Optional
 from alignment.align import align_transcript_to_audio
 from alignment.utils import get_breakable_align_model
 from sources.common.normalize import (
+    DEFAULT_ALIGN_DEVICE_DENSITY,
     DEFAULT_ALIGN_MODEL,
     DEFAULT_FAILURE_THRESHOLD,
     BaseNormalizer,
@@ -159,6 +160,7 @@ def normalize_plenums(
     input_folder: pathlib.Path,
     align_model: str = DEFAULT_ALIGN_MODEL,
     align_devices: list[str] = [],
+    align_device_density: int = DEFAULT_ALIGN_DEVICE_DENSITY,
     force_normalize_reprocess: bool = False,
     force_rescore: bool = False,
     failure_threshold: float = DEFAULT_FAILURE_THRESHOLD,
@@ -181,6 +183,7 @@ def normalize_plenums(
     normalize_entries(
         input_folder=input_folder,
         align_devices=align_devices,
+        align_device_density=align_device_density,
         align_model=align_model,
         normalizer_class=KnessetNormalizer,
         failure_threshold=failure_threshold,

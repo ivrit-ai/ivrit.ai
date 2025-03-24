@@ -17,6 +17,7 @@ from utils.vtt import vtt_to_whisper_result
 # Common constants
 DEFAULT_ALIGN_MODEL = "ivrit-ai/whisper-large-v3-turbo-ct2"
 DEFAULT_ALIGN_DEVICE = "auto"
+DEFAULT_ALIGN_DEVICE_DENSITY = 1
 DEFAULT_FAILURE_THRESHOLD = 0.2
 
 
@@ -87,6 +88,12 @@ def add_common_normalize_args(parser: argparse.ArgumentParser) -> None:
         help=f"Devices for alignment. Use 'auto' to use cuda if available otherwise cpu (default: {DEFAULT_ALIGN_DEVICE}). Can specify multiple devices separated by spaces to increase parallelism.",
     )
     parser.add_argument(
+        "--align-device-density",
+        type=int,
+        default=DEFAULT_ALIGN_DEVICE_DENSITY,
+        help=f"How many workers would use the same device - This allows to better utilize strong GPUs or CPU multi-cores (default: {DEFAULT_ALIGN_DEVICE_DENSITY})",
+    )
+    parser.add_argument(
         "--failure-threshold",
         type=float,
         default=DEFAULT_FAILURE_THRESHOLD,
@@ -107,6 +114,7 @@ def add_common_normalize_args(parser: argparse.ArgumentParser) -> None:
 def normalize_entries(
     input_folder: pathlib.Path,
     align_devices: List[str],
+    align_device_density: int,
     align_model: str,
     normalizer_class: Callable,
     failure_threshold: float,
@@ -125,17 +133,19 @@ def normalize_entries(
         align_devices = [DEFAULT_ALIGN_DEVICE]
 
     # Create a thread-safe queue of devices
+    # density allows us to over subscribe on the same device
     normalizer_queue = Queue()
     num_workers = 0
-    for device in align_devices:
-        # Create a normalizer with the acquired device
-        normalizer = normalizer_class(
-            align_model=align_model,
-            align_device=device,
-            failure_threshold=failure_threshold,
-        )
-        normalizer_queue.put(normalizer)
-        num_workers += 1
+    for _ in range(align_device_density):
+        for device in align_devices:
+            # Create a normalizer with the acquired device
+            normalizer = normalizer_class(
+                align_model=align_model,
+                align_device=device,
+                failure_threshold=failure_threshold,
+            )
+            normalizer_queue.put(normalizer)
+            num_workers += 1
     print(f"Initialized {num_workers} normalization workers")
 
     # Validate input folder exists before proceeding
