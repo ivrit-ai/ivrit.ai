@@ -227,7 +227,7 @@ def main() -> None:
         normalize_sessions(
             output_dir,
             align_model=args.align_model,
-            align_device=args.align_device,
+            align_devices=args.align_devices,
             force_reprocess=args.force_normalize_reprocess,
             force_rescore=args.force_rescore,
             failure_threshold=args.failure_threshold,

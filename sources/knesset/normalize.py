@@ -5,13 +5,12 @@ from typing import List, Optional
 from alignment.align import align_transcript_to_audio
 from alignment.utils import get_breakable_align_model
 from sources.common.normalize import (
-    DEFAULT_ALIGN_DEVICE,
     DEFAULT_ALIGN_MODEL,
     DEFAULT_FAILURE_THRESHOLD,
     BaseNormalizer,
-    normalize_entries,
 )
 from sources.common.normalize import add_common_normalize_args as add_normalize_args
+from sources.common.normalize import normalize_entries
 from sources.knesset.metadata import PlenumMetadata
 
 
@@ -159,7 +158,7 @@ class KnessetNormalizer(BaseNormalizer):
 def normalize_plenums(
     input_folder: pathlib.Path,
     align_model: str = DEFAULT_ALIGN_MODEL,
-    align_device: str = DEFAULT_ALIGN_DEVICE,
+    align_devices: list[str] = [],
     force_normalize_reprocess: bool = False,
     force_rescore: bool = False,
     failure_threshold: float = DEFAULT_FAILURE_THRESHOLD,
@@ -171,27 +170,24 @@ def normalize_plenums(
     Args:
         input_folder: Path to the folder containing plenum directories
         align_model: Model to use for alignment
-        align_device: Device to use for alignment
+        align_devices: List of devices to use for alignment (e.g., ["cuda:0", "cuda:1"]) - this also defines the number of workers
         force_normalize_reprocess: Whether to force reprocessing even if aligned transcript exists
         force_rescore: Whether to force recalculation of quality score
         failure_threshold: Threshold for alignment failure
         plenum_ids: Optional list of plenum IDs to process (if None, process all)
     """
-    # Create normalizer
-    normalizer = KnessetNormalizer(
-        align_model=align_model,
-        align_device=align_device,
-        failure_threshold=failure_threshold,
-    )
 
     # Normalize plenums
     normalize_entries(
-        normalizer=normalizer,
         input_folder=input_folder,
+        align_devices=align_devices,
+        align_model=align_model,
+        normalizer_class=KnessetNormalizer,
+        failure_threshold=failure_threshold,
         force_reprocess=force_normalize_reprocess,
         force_rescore=force_rescore,
         entry_ids=plenum_ids,
     )
 
 
-__all__ = ["normalize_sessions", "add_normalize_args"]
+__all__ = ["normalize_plenums", "add_normalize_args"]

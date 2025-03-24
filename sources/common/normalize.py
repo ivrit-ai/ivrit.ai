@@ -2,15 +2,17 @@ import argparse
 import pathlib
 import sys
 from abc import ABC, abstractmethod
-from typing import List, Dict, Optional, Any, Tuple
+from concurrent.futures import ThreadPoolExecutor
+from queue import Queue
+from typing import Any, Callable, Dict, List, Tuple
 
 import numpy as np
 import stable_whisper
 import torch
 from tqdm import tqdm
 
-from utils.vtt import vtt_to_whisper_result
 from sources.common.metadata import NormalizedEntryMetadata
+from utils.vtt import vtt_to_whisper_result
 
 # Common constants
 DEFAULT_ALIGN_MODEL = "ivrit-ai/whisper-large-v3-turbo-ct2"
@@ -79,10 +81,10 @@ def add_common_normalize_args(parser: argparse.ArgumentParser) -> None:
         help=f"Alignment model to use (default: {DEFAULT_ALIGN_MODEL})",
     )
     parser.add_argument(
-        "--align-device",
+        "--align-devices",
+        nargs="*",
         type=str,
-        default=DEFAULT_ALIGN_DEVICE,
-        help=f"Device for alignment. Use 'auto' to use cuda if available otherwise cpu (default: {DEFAULT_ALIGN_DEVICE})",
+        help=f"Devices for alignment. Use 'auto' to use cuda if available otherwise cpu (default: {DEFAULT_ALIGN_DEVICE}). Can specify multiple devices separated by spaces to increase parallelism.",
     )
     parser.add_argument(
         "--failure-threshold",
@@ -103,9 +105,12 @@ def add_common_normalize_args(parser: argparse.ArgumentParser) -> None:
 
 
 def normalize_entries(
-    normalizer: 'BaseNormalizer',
     input_folder: pathlib.Path,
-    **kwargs
+    align_devices: List[str],
+    align_model: str,
+    normalizer_class: Callable,
+    failure_threshold: float,
+    **kwargs,
 ) -> None:
     """
     Normalize multiple entries.
@@ -115,6 +120,24 @@ def normalize_entries(
         input_folder: Folder containing entry directories
         **kwargs: Additional keyword arguments to pass to normalize_entry
     """
+    # If no device are provided - use the default device and a single worker
+    if not align_devices:
+        align_devices = [DEFAULT_ALIGN_DEVICE]
+
+    # Create a thread-safe queue of devices
+    normalizer_queue = Queue()
+    num_workers = 0
+    for device in align_devices:
+        # Create a normalizer with the acquired device
+        normalizer = normalizer_class(
+            align_model=align_model,
+            align_device=device,
+            failure_threshold=failure_threshold,
+        )
+        normalizer_queue.put(normalizer)
+        num_workers += 1
+    print(f"Initialized {num_workers} normalization workers")
+
     # Validate input folder exists before proceeding
     if not input_folder.exists() or not input_folder.is_dir():
         print(f"Input folder '{input_folder}' does not exist or is not a directory.", file=sys.stderr)
@@ -122,7 +145,7 @@ def normalize_entries(
 
     # Find all entry directories by looking for metadata.json files
     meta_files = list(input_folder.glob("*/metadata.json"))
-    entry_ids = kwargs.pop('entry_ids', None)
+    entry_ids = kwargs.pop("entry_ids", None)
     if entry_ids:
         meta_files = [mf for mf in meta_files if mf.parent.name in entry_ids]
 
@@ -130,13 +153,35 @@ def normalize_entries(
         print("No entry metadata.json files found in input folder.")
         return
 
-    # Load model once for all entries
-    normalizer.load_model()
+    # Define the worker function
+    def process_entry(entry_dir):
+        # Acquire a normalizer from the queue
+        normalizer: BaseNormalizer = normalizer_queue.get()
+        try:
+            # Load the model (if not loaded)
+            normalizer.load_model()
 
-    # Process each entry with progress tracking
-    for meta_file in tqdm(meta_files, desc="Normalizing entries"):
-        entry_dir = meta_file.parent
-        normalizer.normalize_entry(entry_dir, **kwargs)
+            # Process the entry
+            print(f"Starting entry {entry_dir.name}")
+
+            result = normalizer.normalize_entry(entry_dir=entry_dir, **kwargs)
+
+            print(f"Finished entry {entry_dir.name}")
+            return result
+        finally:
+            # Release the normalizer back to the queue
+            normalizer_queue.put(normalizer)
+
+    # Create a thread pool with as many workers as there are devices
+    with ThreadPoolExecutor(max_workers=num_workers) as executor:
+        # Process entries in parallel using threads
+        futures = [executor.submit(process_entry, meta_file.parent) for meta_file in meta_files]
+
+        # Track progress with tqdm
+        for _ in tqdm(
+            [future.result() for future in futures], total=len(meta_files), desc="Normalizing entries in parallel"
+        ):
+            pass
 
 
 class BaseNormalizer(ABC):
