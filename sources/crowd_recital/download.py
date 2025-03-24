@@ -162,7 +162,7 @@ def main() -> None:
     parser.add_argument(
         "--session-ids",
         type=str,
-        action="append",
+        nargs="+",
         default=[],
         help="Filter to process only the specified session ids (can be specified multiple times)",
     )

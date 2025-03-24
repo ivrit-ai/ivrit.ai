@@ -171,7 +171,7 @@ def main() -> None:
     parser.add_argument(
         "--plenum-ids",
         type=str,
-        action="append",
+        nargs="+",
         default=[],
         help="Filter to process only the specified plenum ids (can be specified multiple times)",
     )
