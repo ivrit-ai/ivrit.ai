@@ -2,8 +2,6 @@ import json
 import pathlib
 from typing import List, Optional
 
-from librosa import ex
-
 from sources.common.normalize import (
     DEFAULT_ALIGN_DEVICE,
     DEFAULT_ALIGN_MODEL,
@@ -11,6 +9,7 @@ from sources.common.normalize import (
     BaseNormalizer,
 )
 from sources.common.normalize import add_common_normalize_args as add_normalize_args
+from sources.common.normalize import normalize_entries
 from sources.crowd_recital.metadata import SessionMetadata
 
 
@@ -76,7 +75,8 @@ def normalize_sessions(
     )
 
     # Normalize sessions
-    normalizer.normalize_entries(
+    normalize_entries(
+        normalizer=normalizer,
         input_folder=input_folder,
         force_reprocess=force_reprocess,
         force_rescore=force_rescore,

@@ -102,6 +102,43 @@ def add_common_normalize_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def normalize_entries(
+    normalizer: 'BaseNormalizer',
+    input_folder: pathlib.Path,
+    **kwargs
+) -> None:
+    """
+    Normalize multiple entries.
+
+    Args:
+        normalizer: The normalizer instance to use for processing entries
+        input_folder: Folder containing entry directories
+        **kwargs: Additional keyword arguments to pass to normalize_entry
+    """
+    # Validate input folder exists before proceeding
+    if not input_folder.exists() or not input_folder.is_dir():
+        print(f"Input folder '{input_folder}' does not exist or is not a directory.", file=sys.stderr)
+        return
+
+    # Find all entry directories by looking for metadata.json files
+    meta_files = list(input_folder.glob("*/metadata.json"))
+    entry_ids = kwargs.pop('entry_ids', None)
+    if entry_ids:
+        meta_files = [mf for mf in meta_files if mf.parent.name in entry_ids]
+
+    if not meta_files:
+        print("No entry metadata.json files found in input folder.")
+        return
+
+    # Load model once for all entries
+    normalizer.load_model()
+
+    # Process each entry with progress tracking
+    for meta_file in tqdm(meta_files, desc="Normalizing entries"):
+        entry_dir = meta_file.parent
+        normalizer.normalize_entry(entry_dir, **kwargs)
+
+
 class BaseNormalizer(ABC):
     """Base class for normalizing transcripts across different sources."""
 
@@ -292,42 +329,3 @@ class BaseNormalizer(ABC):
 
         tqdm.write(f" - Processed entry {entry_id}: quality score = {quality_score}")
         return True
-
-    def normalize_entries(
-        self,
-        input_folder: pathlib.Path,
-        force_reprocess: bool = False,
-        force_rescore: bool = False,
-        entry_ids: Optional[List[str]] = None,
-    ) -> None:
-        """
-        Normalize multiple entries.
-
-        Args:
-            input_folder: Folder containing entry directories
-            force_reprocess: Whether to force reprocessing even if aligned transcript exists
-            force_rescore: Whether to force recalculation of quality score
-            entry_ids: Optional list of entry IDs to process (if None, process all)
-        """
-        # Validate input folder exists before proceeding
-        if not input_folder.exists() or not input_folder.is_dir():
-            print(f"Input folder '{input_folder}' does not exist or is not a directory.", file=sys.stderr)
-            return
-
-        # Find all entry directories by looking for metadata.json files
-        meta_files = list(input_folder.glob("*/metadata.json"))
-        if entry_ids:
-            meta_files = [mf for mf in meta_files if mf.parent.name in entry_ids]
-
-        if not meta_files:
-            print("No entry metadata.json files found in input folder.")
-            return
-
-        # Load model once for all entries
-        if self.model is None:
-            self.model = self.load_model()
-
-        # Process each entry with progress tracking
-        for meta_file in tqdm(meta_files, desc="Normalizing entries"):
-            entry_dir = meta_file.parent
-            self.normalize_entry(entry_dir, force_reprocess, force_rescore)

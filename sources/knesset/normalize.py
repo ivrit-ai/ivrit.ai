@@ -9,6 +9,7 @@ from sources.common.normalize import (
     DEFAULT_ALIGN_MODEL,
     DEFAULT_FAILURE_THRESHOLD,
     BaseNormalizer,
+    normalize_entries,
 )
 from sources.common.normalize import add_common_normalize_args as add_normalize_args
 from sources.knesset.metadata import PlenumMetadata
@@ -184,7 +185,8 @@ def normalize_plenums(
     )
 
     # Normalize plenums
-    normalizer.normalize_entries(
+    normalize_entries(
+        normalizer=normalizer,
         input_folder=input_folder,
         force_reprocess=force_normalize_reprocess,
         force_rescore=force_rescore,
