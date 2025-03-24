@@ -292,6 +292,7 @@ def align_transcript_to_audio(
                 # +1, since we will prepend this first segment (it might required prefix removal)
                 + 1 :
             ]
+            first_segment_to_continue_aligning = None
         else:
             first_segment_to_continue_aligning = segments_after_assumed_confusion_zone[0]
 
@@ -306,12 +307,33 @@ def align_transcript_to_audio(
         # containing only the part which is skipped
         confusing_segments_to_skip = [initial_unaligned_segment_in_confusion_zone] + confusing_segments_to_skip
 
-        # Ensure none of the segments has a start/end below the top aligned timestamp
-        for segment in confusing_segments_to_skip:
-            segment.start = max(segment.start, top_aligned_timestamp)
-            segment.end = max(segment.end, top_aligned_timestamp)
+        # Before comitting the skipped segments - we will align them to the audio slice they reside over
+        # this would not create high quality alignment probably - but will produce (arbitrary) word timings
+        # that allow those segmwnts to co-exist with the propelry aliged segments.
+        skipped_text_to_align = get_text_from_segments(confusing_segments_to_skip)
+        align_skipped_start_from = max(top_aligned_timestamp, confusing_segments_to_skip[0].start)
+        align_skipped_end_at = first_segment_to_continue_aligning.start if first_segment_to_continue_aligning else None
+        audio = SeekableAudioLoader(
+            str(audio_file), sr=SAMPLE_RATE, stream=True, load_sections=[[align_skipped_start_from, align_skipped_end_at]], test_first_chunk=False
+        )
 
-        aligned_pieces.extend(confusing_segments_to_skip)  # consider this done (although it's unaligned == estimated)
+        # this may break due to low prob - that's ok - we given up on those segments for now.
+        aligned_skipped: stable_whisper.WhisperResult = model.align(
+            audio, skipped_text_to_align, language=language, failure_threshold=zero_duration_segments_failure_ratio
+        )
+
+        # Ensure none of the segments has a start/end below the top aligned timestamp
+        # or over the confusion zone audio slice end
+        for segment in aligned_skipped:
+            for word in segment.words:
+                word.start = max(word.start, top_aligned_timestamp)
+                word.end = max(word.end, word.start)
+                if align_skipped_end_at:
+                    word.end = min(align_skipped_end_at, word.end)
+                # Start cannot be above the end
+                word.start = min(word.end, word.start)
+
+        aligned_pieces.extend(aligned_skipped.segments)  # consider this done (although it's unaligned == estimated)
 
         if not done:
             to_align_next = get_text_from_segments(segments_after_assumed_confusion_zone)
@@ -329,39 +351,6 @@ def align_transcript_to_audio(
         # Forget prev confusion zone
         min_confusion_zone_start = 0
         max_confusion_zone_end = 0
-
-    # some skipped segments have no words and cannot
-    # co exist with the aligned segments.
-    # pick those up and align them specifically, using "align words"
-    # which ensure they will not drift - we don't expect them to be aligned
-    # eventually, they are probably the confusing ones - but at least they will
-    # have words
-    segs_to_align_words = []
-    segs_to_align_positions = []
-    for seg_pos, seg in enumerate(aligned_pieces):
-        if seg.has_words:
-            continue
-        seg = seg.to_dict()
-        segs_to_align_words.append(seg)
-        segs_to_align_positions.append(seg_pos)
-
-    to_word_align = stable_whisper.WhisperResult({"segments": segs_to_align_words})
-
-    audio = stable_whisper.audio.AudioLoader(
-        str(audio_file),
-        sr=SAMPLE_RATE,
-        stream=True,
-    )
-    word_aligned: stable_whisper.WhisperResult = model.align_words(
-        audio, to_word_align, language=language, regroup=False
-    )
-
-    # replace each skipped segment with it's aligned match
-    for seg_pos, word_aligned_seg in zip(segs_to_align_positions, word_aligned.segments):
-        assert (
-            aligned_pieces[seg_pos].text == word_aligned_seg.text
-        ), f"before {aligned_pieces[seg_pos].text} is not {word_aligned_seg.text}"
-        aligned_pieces[seg_pos] = word_aligned_seg
 
     final_aligned = create_transcript_from_segments(aligned_pieces)
 
