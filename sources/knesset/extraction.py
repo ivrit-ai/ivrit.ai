@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from scipy.stats import linregress
 from bs4 import BeautifulSoup, NavigableString, PageElement
 from webvtt import Caption, WebVTT
 
@@ -314,16 +315,32 @@ def parse_plenum_transcript(content, time_pointers_arr_np) -> Tuple[str, List[Ti
     return all_processed_text, timestamp_segments
 
 
-def cleanup_html_time_map_arr(time_map_arr: np.ndarray) -> np.ndarray:
+def cleanup_html_time_map_arr(
+        time_map_arr: np.ndarray,
+        max_expected_time_stride: float = 30
+) -> np.ndarray:
     """
     Clean up the HTML time map array.
 
     Args:
         time_map_arr: Array of time pointers
+        max_expected_time_stride: Max expected time stride in one index step
 
     Returns:
         Cleaned array of time pointers
     """
+    time_map_arr = time_map_arr.copy() # don't modify the original
+
+    # gather some estimation on the time progress behavior
+    slope_estimator_results = linregress(np.arange(len(time_map_arr)), time_map_arr, alternative='greater')
+    # Assuming we won't see more than max_expected_time_stride in one index step
+    # how much forward index stride should we take to estimate the actual progress
+    # if the current fixed values is an error spike
+    cleanup_lookahead_index_stride = int(
+        max_expected_time_stride / slope_estimator_results.slope
+        * 1.5 # overdo the future lookup to compensate for large errors
+    )
+
     min_referenced_time_idx = max(
         1, np.argmin(np.where(time_map_arr > 0, time_map_arr, np.inf))
     )  # find index of the lowest non-0 time value is at
@@ -332,7 +349,7 @@ def cleanup_html_time_map_arr(time_map_arr: np.ndarray) -> np.ndarray:
 
     # go over values in ascending order - if it deviates too much - use the prev value instead
     max_backwards_jump = 0
-    max_forward_jump = 30
+    max_forward_jump = max_expected_time_stride
     for ith in range(min_referenced_time_idx, len(time_map_arr) - 1):
         if (
             time_map_arr[ith] - time_map_arr[ith + 1] > max_backwards_jump
@@ -341,7 +358,7 @@ def cleanup_html_time_map_arr(time_map_arr: np.ndarray) -> np.ndarray:
         elif time_map_arr[ith + 1] - time_map_arr[ith] > max_forward_jump:  # Forward jump is too big - fix it
             # Skip the bad value and look forward a bit to get an estimate
             # of where the series continues
-            future_lookup = time_map_arr[ith + 2 : ith + 10 : 2]
+            future_lookup = time_map_arr[ith + 2 : ith + cleanup_lookahead_index_stride : 2]
             # Too close to the end?
             if len(future_lookup) == 0:
                 # Fallback to any values we get looking forward
@@ -356,8 +373,14 @@ def cleanup_html_time_map_arr(time_map_arr: np.ndarray) -> np.ndarray:
             if abs(time_map_arr[ith + 1] - future_baseline) < abs(time_map_arr[ith] - future_baseline):
                 continue
 
-            # Otherwise - fix it by taking the max allowed jump
-            time_map_arr[ith + 1] = time_map_arr[ith] + max_forward_jump
+            # Otherwise - fix it by taking the max allowed jump or the future baseline
+            # which ever is closer
+            distance_from_future_baseline = abs(time_map_arr[ith] - future_baseline)
+            distance_from_max_allowed_jump = abs(time_map_arr[ith] - time_map_arr[ith + 1])
+            if distance_from_future_baseline < distance_from_max_allowed_jump:
+                time_map_arr[ith + 1] = future_baseline
+            else:
+                time_map_arr[ith + 1] = time_map_arr[ith] + max_forward_jump
 
     return time_map_arr
 
