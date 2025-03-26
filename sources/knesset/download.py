@@ -279,7 +279,7 @@ def main() -> None:
                 source_id=plenum_source_id,
                 source_entry_id=plenum_id,
                 plenum_id=plenum_id,
-                duration=duration,
+                duration=round(duration, 2),
                 plenum_date=plenum_date,
             )
 
