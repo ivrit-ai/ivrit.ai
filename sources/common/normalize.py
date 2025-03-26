@@ -2,7 +2,7 @@ import argparse
 import pathlib
 import sys
 from abc import ABC, abstractmethod
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from queue import Queue
 from typing import Any, Callable, Dict, List, Tuple
 
@@ -172,26 +172,29 @@ def normalize_entries(
             normalizer.load_model()
 
             # Process the entry
-            print(f"Starting entry {entry_dir.name}")
-
             result = normalizer.normalize_entry(entry_dir=entry_dir, **kwargs)
-
-            print(f"Finished entry {entry_dir.name}")
             return result
         finally:
             # Release the normalizer back to the queue
             normalizer_queue.put(normalizer)
 
-    # Create a thread pool with as many workers as there are devices
-    with ThreadPoolExecutor(max_workers=num_workers) as executor:
-        # Process entries in parallel using threads
-        futures = [executor.submit(process_entry, meta_file.parent) for meta_file in meta_files]
+    try:
+        # Create a thread pool with as many workers as there are devices
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            # Process entries in parallel using threads
+            futures = [executor.submit(process_entry, meta_file.parent) for meta_file in meta_files]
 
-        # Track progress with tqdm
-        for _ in tqdm(
-            [future.result() for future in futures], total=len(meta_files), desc="Normalizing entries in parallel"
-        ):
-            pass
+            for future in tqdm(as_completed(futures), total=len(futures), desc="Normalizing entries"):
+                try:
+                    future.result()
+                except Exception as e:
+                    print(f"Task raised an exception: {e}")
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt received! Cancelling remaining tasks...")
+        for f in futures:
+            f.cancel()
+        executor.shutdown(wait=False, cancel_futures=True)  # Python 3.9+
+        raise  # re-raise to exit
 
 
 class BaseNormalizer(ABC):
