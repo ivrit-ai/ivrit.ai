@@ -3,14 +3,12 @@ import pathlib
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from time import gmtime, strftime
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-from scipy.stats import linregress
 from bs4 import BeautifulSoup, NavigableString, PageElement
-from webvtt import Caption, WebVTT
+from stable_whisper import WhisperResult
 
 from sources.knesset.cleanup import cleanup_time_index
 
@@ -317,7 +315,7 @@ def parse_plenum_transcript(content, time_pointers_arr_np) -> Tuple[str, List[Ti
     return all_processed_text, timestamp_segments
 
 
-# Common formatting usage in the transcripts which should be included in the captions
+# Common formatting usage in the transcripts which should not be included in the captions
 translate_formatting_to_replace_with_space = {
     # en-dash characters
     0x2013: " ",
@@ -333,15 +331,6 @@ def normalize_text_as_caption_text(text: str) -> str:
     # Deduplicate whitespaces
     text = re.sub(r"\s+", " ", text)
     return text
-
-
-def create_caption(text: str, start: float, end: float) -> Caption:
-    return Caption(
-        # Format to hh:mm:ss.zzz
-        start=strftime("%H:%M:%S.000", gmtime(start)),
-        end=strftime("%H:%M:%S.000", gmtime(end)),
-        text=text,
-    )
 
 
 max_first_caption_inclusion_lookback_window_length = 120
@@ -425,10 +414,10 @@ def update_word_duration_stats(
     return updated_avg_word_duration
 
 
-def create_recording_transcript_vtt(text: str, time_segments: List[TimedSegment]) -> WebVTT:
-    vtt = WebVTT()
+def create_recording_transcript_segments(text: str, time_segments: List[TimedSegment]) -> list[dict]:
     # Ensure segments are sorted by timestamp
     time_segments = sorted(time_segments, key=lambda segment: segment.timestamp)
+    result_segments = []
 
     merging_next = False
     merge_start_loc = None
@@ -500,15 +489,17 @@ def create_recording_transcript_vtt(text: str, time_segments: List[TimedSegment]
                     ):
                         duration_for_this_segment = expected_duration_for_this_segment
 
-                vtt.captions.append(
-                    create_caption(
-                        extracted_text_for_slice, segment.timestamp, segment.timestamp + duration_for_this_segment
-                    )
+                result_segments.append(
+                    {
+                        "start": segment.timestamp,
+                        "end": segment.timestamp + duration_for_this_segment,
+                        "text": extracted_text_for_slice,
+                    }
                 )
 
             tmp_track.append(tracked_avg_word_duration)
 
-    return vtt
+    return result_segments
 
 
 def process_transcripts(
@@ -565,9 +556,9 @@ def process_transcripts(
         timestamp_index_path = plenum_output_dir / "transcript.timeindex.csv"
         save_timestamp_index_to_csv(timestamp_segments, timestamp_index_path)
 
-        print("Creating a VTT file of the transcript...")
-        vtt = create_recording_transcript_vtt(transcript_text, timestamp_segments)
-        vtt.save(plenum_output_dir / f"transcript.vtt", add_bom=True)
+        print("Creating a segments file of the transcript...")
+        result_segments = create_recording_transcript_segments(transcript_text, timestamp_segments)
+        WhisperResult(result_segments).save_as_json(str(plenum_output_dir / f"transcript.json"))
 
         print(f"Successfully processed {len(protocol_html_paths)} HTML files for plenum {plenum_id}")
         print(f"Transcript saved to {transcript_text_path}")

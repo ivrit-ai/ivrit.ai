@@ -2,6 +2,8 @@ import json
 import pathlib
 from typing import List, Optional
 
+import stable_whisper
+
 from alignment.align import align_transcript_to_audio
 from alignment.utils import get_breakable_align_model
 from sources.common.normalize import (
@@ -30,6 +32,12 @@ class KnessetNormalizer(BaseNormalizer):
         if not audio_file:
             raise FileNotFoundError(f"No audio file found in {entry_dir}")
         return audio_file
+
+    def get_input_transcript_file(self, entry_dir: pathlib.Path) -> pathlib.Path:
+        return entry_dir / "transcript.json"
+
+    def read_transcript_file_as_whisper_result(self, transcript_file):
+        return stable_whisper.WhisperResult(str(transcript_file))
 
     def get_language(self, metadata: PlenumMetadata) -> str:
         """Get the language for the plenum (always Hebrew for Knesset)."""
@@ -103,16 +111,25 @@ class KnessetNormalizer(BaseNormalizer):
 
             # Get audio file
             audio_file = self.get_audio_file(entry_dir)
-            transcript_vtt = entry_dir / "transcript.vtt"
+            transcript_file = self.get_input_transcript_file(entry_dir)
 
-            if not audio_file.exists() or not transcript_vtt.exists():
-                tqdm.write(f" - Skipping entry {entry_id} because required files are missing.")
+            if not audio_file.exists():
+                tqdm.write(f" - Skipping entry {entry_id} because required audio file is missing.")
+                return False
+            if not transcript_file.exists():
+                tqdm.write(f" - Skipping entry {entry_id} because required transcript file is missing.")
+                return False
+
+            try:
+                whisper_result = self.read_transcript_file_as_whisper_result(transcript_file)
+            except Exception as e:
+                tqdm.write(f" - Error processing transcript.vtt for entry {entry_id}: {e}")
                 return False
 
             try:
                 align_result = align_transcript_to_audio(
                     audio_file=audio_file,
-                    transcript=transcript_vtt,
+                    transcript=whisper_result,
                     model=self.model,
                     language=language,
                     zero_duration_segments_failure_ratio=self.failure_threshold,

@@ -11,6 +11,7 @@ from sources.common.normalize import (
 from sources.common.normalize import add_common_normalize_args as add_normalize_args
 from sources.common.normalize import normalize_entries
 from sources.crowd_recital.metadata import SessionMetadata
+from utils.vtt import vtt_to_whisper_result
 
 
 class CrowdRecitalNormalizer(BaseNormalizer):
@@ -23,6 +24,14 @@ class CrowdRecitalNormalizer(BaseNormalizer):
     def get_audio_file(self, entry_dir: pathlib.Path) -> pathlib.Path:
         """Get the audio file path for the session."""
         return entry_dir / "audio.mka"
+
+    def get_input_transcript_file(self, entry_dir):
+        return entry_dir / "transcript.vtt"
+
+    def read_transcript_file_as_whisper_result(self, transcript_file):
+        with open(transcript_file, "r", encoding="utf-8") as f:
+            vtt_content = f.read()
+        return vtt_to_whisper_result(vtt_content)
 
     def get_language(self, metadata: SessionMetadata) -> str:
         """Get the language for the session."""

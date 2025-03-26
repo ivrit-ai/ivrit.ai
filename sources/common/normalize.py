@@ -12,7 +12,6 @@ import torch
 from tqdm import tqdm
 
 from sources.common.metadata import NormalizedEntryMetadata
-from utils.vtt import vtt_to_whisper_result
 
 # Common constants
 DEFAULT_ALIGN_MODEL = "ivrit-ai/whisper-large-v3-turbo-ct2"
@@ -222,6 +221,16 @@ class BaseNormalizer(ABC):
         pass
 
     @abstractmethod
+    def get_input_transcript_file(self, entry_dir: pathlib.Path) -> pathlib.Path:
+        """Get the transcript file path for the entry."""
+        pass
+
+    @abstractmethod
+    def read_transcript_file_as_whisper_result(self, transcript_file: pathlib.Path) -> stable_whisper.WhisperResult:
+        """Read the transcript file and convert it to the common whisper result format"""
+        pass
+
+    @abstractmethod
     def get_language(self, metadata: Any) -> str:
         """Get the language for the entry."""
         pass
@@ -333,16 +342,17 @@ class BaseNormalizer(ABC):
 
             # Get audio file
             audio_file = self.get_audio_file(entry_dir)
-            transcript_vtt = entry_dir / "transcript.vtt"
+            transcript_file = self.get_input_transcript_file(entry_dir)
 
-            if not audio_file.exists() or not transcript_vtt.exists():
-                tqdm.write(f" - Skipping entry {entry_id} because required files are missing.")
+            if not audio_file.exists():
+                tqdm.write(f" - Skipping entry {entry_id} because required audio file is missing.")
+                return False
+            if not transcript_file.exists():
+                tqdm.write(f" - Skipping entry {entry_id} because required transcript file is missing.")
                 return False
 
             try:
-                with open(transcript_vtt, "r", encoding="utf-8") as f:
-                    vtt_content = f.read()
-                whisper_result = vtt_to_whisper_result(vtt_content)
+                whisper_result = self.read_transcript_file_as_whisper_result(transcript_file)
             except Exception as e:
                 tqdm.write(f" - Error processing transcript.vtt for entry {entry_id}: {e}")
                 return False
