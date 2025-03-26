@@ -1,6 +1,8 @@
 import argparse
+import logging
 import pathlib
 import re
+from logging.handlers import RotatingFileHandler
 from typing import List, Optional, Tuple
 
 from tqdm import tqdm
@@ -179,6 +181,13 @@ def main() -> None:
     # Add normalization-related arguments
     add_normalize_args(parser)
 
+    # Add logging-related arguments
+    parser.add_argument(
+        "--logs-folder",
+        type=str,
+        help="Folder to store log files. If not specified, logging is disabled.",
+    )
+
     args = parser.parse_args()
 
     input_media_dir = pathlib.Path(args.input_media_dir)
@@ -292,6 +301,37 @@ def main() -> None:
         except Exception as e:
             tqdm.write(f" - ERROR: Unexpected error processing plenum {plenum_id}: {e}")
             tqdm.write(f" - Skipping to next plenum")
+
+    # Configure logging based on logs_folder
+    # By default, disable all logging
+    logging.basicConfig(level=logging.CRITICAL + 1)  # Set level higher than CRITICAL to disable all logging
+
+    if hasattr(args, "logs_folder") and args.logs_folder:
+        logs_folder = pathlib.Path(args.logs_folder)
+        logs_folder.mkdir(parents=True, exist_ok=True)
+
+        # Configure root logger
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.INFO)
+
+        # Remove any existing handlers
+        for handler in root_logger.handlers[:]:
+            root_logger.removeHandler(handler)
+
+        # Create a rotating file handler
+        log_file = logs_folder / "download_log"
+        file_handler = RotatingFileHandler(log_file, maxBytes=5 * 1024 * 1024, backupCount=5)  # 5MB
+        file_handler.setLevel(logging.INFO)
+
+        # Create formatter and add it to the handler
+        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        file_handler.setFormatter(formatter)
+
+        # Add the handler to the logger
+        root_logger.addHandler(file_handler)
+
+        # Log start of process
+        logging.info(f"Starting Knesset download process with output directory: {output_dir}")
 
     # After downloads complete, process normalization if not skipped
     if not args.skip_normalize:

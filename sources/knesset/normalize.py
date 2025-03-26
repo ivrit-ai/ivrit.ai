@@ -1,5 +1,7 @@
 import json
+import logging
 import pathlib
+import time
 from typing import List, Optional
 
 import stable_whisper
@@ -16,6 +18,9 @@ from sources.common.normalize import add_common_normalize_args as add_normalize_
 from sources.common.normalize import normalize_entries
 from sources.knesset.metadata import PlenumMetadata
 
+
+# Create a logger for this module
+logger = logging.getLogger(__name__)
 
 class KnessetNormalizer(BaseNormalizer):
     """Normalizer for Knesset plenum entries."""
@@ -87,6 +92,10 @@ class KnessetNormalizer(BaseNormalizer):
         entry_id = self.get_entry_id(entry_dir)
         from tqdm import tqdm
 
+        # Start timing the normalization process
+        start_time = time.time()
+        
+        logger.info(f"Starting normalization of entry {entry_id}")
         tqdm.write(f"Processing entry: {entry_id}")
 
         meta_file = entry_dir / "metadata.json"
@@ -169,6 +178,18 @@ class KnessetNormalizer(BaseNormalizer):
                 tqdm.write(f" - Failed to save aligned transcript for entry {entry_id}: {e}")
                 return False
 
+        # Calculate processing time and log completion
+        end_time = time.time()
+        processing_time = end_time - start_time
+        entry_duration = self.get_duration(metadata)
+        processing_ratio = entry_duration / processing_time if processing_time > 0 else 0
+        
+        logger.info(
+            f"Entry {entry_id} (duration {entry_duration:.2f} seconds) normalization done. "
+            f"Took: {processing_time:.2f} seconds ({processing_ratio:.2f} s/sec). "
+            f"Quality Score: {quality_score:.4f}"
+        )
+        
         tqdm.write(f" - Processed entry {entry_id}: quality score = {quality_score}")
         return True
 
