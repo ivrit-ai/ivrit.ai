@@ -177,16 +177,16 @@ def main() -> None:
         default=[],
         help="Filter to process only the specified plenum ids (can be specified multiple times)",
     )
-
-    # Add normalization-related arguments
-    add_normalize_args(parser)
-
-    # Add logging-related arguments
     parser.add_argument(
         "--logs-folder",
         type=str,
         help="Folder to store log files. If not specified, logging is disabled.",
     )
+
+    # Add normalization-related arguments
+    add_normalize_args(parser)
+
+    # Add logging-related arguments
 
     args = parser.parse_args()
 
