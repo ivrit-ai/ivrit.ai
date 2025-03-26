@@ -72,55 +72,52 @@ class BreakableAligner(Aligner):
             postfix["err_ratio"] = round(bad_good_ratio, 2)
         if avg_prob is not None:
             postfix["avg_prob"] = round(avg_prob, 2)
-        
+
         if postfix:
             tqdm_pbar.set_postfix(postfix)
         super()._update_pbar(tqdm_pbar, last_ts, finish)
 
     def update_word_prob_window(self, window_words, total_word_duration, new_words, current_time):
         """Update the sliding window of word probabilities.
-        
+
         This method adds new words to the sliding window, removes words that are outside
         the window duration, and calculates the bad to good ratio if there is enough data.
-        
+
         Args:
             window_words: Deque of words in the current window.
             total_word_duration: Total duration of words in the window.
             new_words: New words to add to the window.
             current_time: Current timestamp.
-            
+
         Returns:
             Tuple of (updated_window_words, updated_total_word_duration, bad_good_ratio, avg_probability).
             If there is not enough data, bad_good_ratio and avg_probability will be None.
         """
         from alignment.utils import calculate_bad_good_prob_ratio
-        
+
         # Add new words to the sliding window
         for word in new_words:
             window_words.append(word)
             word_duration = max(0.1, word.end - word.start)
             total_word_duration += word_duration
-        
+
         # Remove words that are outside the window duration
         window_start_time = current_time - self.confusion_window_duration
         while window_words and window_words[0].end < window_start_time:
             old_word = window_words.popleft()
             old_word_duration = max(0.1, old_word.end - old_word.start)
             total_word_duration -= old_word_duration
-        
+
         # Calculate metrics if we have enough data
         bad_good_ratio = None
         avg_probability = None
         if total_word_duration >= self.confusion_warmup_duration and window_words:
-            bad_good_ratio, _, _ = calculate_bad_good_prob_ratio(
-                window_words, 
-                self.good_seg_prob_threshold
-            )
-            
+            bad_good_ratio, _, _ = calculate_bad_good_prob_ratio(window_words, self.good_seg_prob_threshold)
+
             # Calculate average probability
             probabilities = [word.probability for word in window_words]
             avg_probability = np.mean(probabilities) if probabilities else None
-        
+
         return window_words, total_word_duration, bad_good_ratio, avg_probability
 
     def align(
@@ -150,7 +147,7 @@ class BreakableAligner(Aligner):
             last_ts = 0.0
             premature_stop = False
             first_seen_ts = None
-            
+
             # Sliding window for confusion detection
             window_words = deque()
             total_word_duration = 0.0
@@ -178,10 +175,10 @@ class BreakableAligner(Aligner):
 
                 # Update the sliding window with new words
                 if self._curr_words:
-                    window_words, total_word_duration, current_bad_good_ratio, current_avg_prob = self.update_word_prob_window(
-                        window_words, total_word_duration, self._curr_words, last_ts
+                    window_words, total_word_duration, current_bad_good_ratio, current_avg_prob = (
+                        self.update_word_prob_window(window_words, total_word_duration, self._curr_words, last_ts)
                     )
-                
+
                 self._update_pbar(tqdm_pbar, last_ts, current_bad_good_ratio, current_avg_prob)
 
                 result.extend(self._curr_words)
@@ -197,30 +194,32 @@ class BreakableAligner(Aligner):
                     self.failure_count += sum(1 for wts in self._curr_words if wts.end - wts.start == 0)
                     if self.failure_count > self.max_fail:
                         premature_stop = True
-                        tqdm_pbar.write("Breaking - too many 0-len segments")
+                        if self.options.progress.verbose:
+                            tqdm_pbar.write("Breaking - too many 0-len segments")
                         break
 
                 # Check if we should break due to high bad/good ratio
-                if (
-                    current_bad_good_ratio is not None
-                    and current_bad_good_ratio > self.bad_to_good_ratio_threshold
-                ):
+                if current_bad_good_ratio is not None and current_bad_good_ratio > self.bad_to_good_ratio_threshold:
                     premature_stop = True
-                    tqdm_pbar.write(f"Breaking - bad/good ratio too high: {current_bad_good_ratio:.2f}")
+                    if self.options.progress.verbose:
+                        tqdm_pbar.write(f"Breaking - bad/good ratio too high: {current_bad_good_ratio:.2f}")
                     break
 
-            self._update_pbar(tqdm_pbar, last_ts, current_bad_good_ratio, current_avg_prob, self.failure_count <= self.max_fail)
+            self._update_pbar(
+                tqdm_pbar, last_ts, current_bad_good_ratio, current_avg_prob, self.failure_count <= self.max_fail
+            )
 
         if not premature_stop and self._temp_data.word is not None:
             result.append(self._temp_data.word)
-        if not result:
+        if not result and self.options.progress.verbose:
             warnings.warn("Failed to align text.", stacklevel=2)
         if self._all_word_tokens and not premature_stop:
             last_ts_str = format_timestamp(result[-1].end if result else 0)
-            print(
-                f"Failed to align the last {len(self._all_word_tokens)}/{self._total_words} words after "
-                f"{last_ts_str}.",
-            )
+            if self.options.progress.verbose:
+                print(
+                    f"Failed to align the last {len(self._all_word_tokens)}/{self._total_words} words after "
+                    f"{last_ts_str}.",
+                )
 
         if self._all_word_tokens and not self.remove_instant_words:
             final_total_duration = self.audio_loader.get_duration(3)
@@ -268,9 +267,10 @@ class BreakableAligner(Aligner):
             final_result.regroup(self.options.post.regroup)
 
         if fail_segs := len([None for s in final_result.segments if s.end - s.start <= 0]):
-            print(
-                f"{fail_segs}/{len(final_result.segments)} segments failed to align.",
-            )
+            if self.options.progress.verbose:
+                print(
+                    f"{fail_segs}/{len(final_result.segments)} segments failed to align.",
+                )
 
         return final_result
 
