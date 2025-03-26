@@ -26,7 +26,7 @@ def align_transcript_to_audio(
     language: str = "he",
     pre_confusion_zone_backward_skip_search_duration_window: int = 30,
     max_pre_confusion_zone_tries_before_skip: int = 2,
-    unaligned_start_text_match_search_radius: int = 140,
+    unaligned_start_text_match_search_radius: int = 270,
     zero_duration_segments_failure_ratio: float = 0.2,
     max_confusion_zone_skip_duration: int = 120,
     min_confusion_zone_skip_duration: int = 15,
@@ -186,7 +186,7 @@ def align_transcript_to_audio(
         # after the last try ended.
         # this usually cover the entire confusion zone up to the end
         # of the entire text for the audio file
-        text_at_start_of_confusion_zone = to_align_next[: unaligned_start_text_match_search_radius // 2]
+        text_at_start_of_confusion_zone = to_align_next[: unaligned_start_text_match_search_radius // 3]
 
         search_tries_left = 3
         search_radius_to_try = unaligned_start_text_match_search_radius
@@ -222,12 +222,16 @@ def align_transcript_to_audio(
             else:
                 break
 
-        # If still cannot find - we crash
+        # If still cannot find - some data corruption is expected.
+        # but we have no better way to recover at this point.
+        # assume all content within the confusion zone span from the unaligned
+        # is to be skipped (this may not contain all text in actual confusion zone. or may
+        # contain text already aligned.
+        # This is a hail-mery attempt
         if found_at_text_idx == -1:
-            raise ValueError(
-                f"Could not find matching text in confusion zone, slice_start: {slice_start}\ntext: `{text_at_start_of_confusion_zone}`"
-                f"\ntext in zone: `{text_around_confusion_zone}`"
-            )
+            progress_bar.write(f"Could not find matching text in confusion zone, slice_start: {slice_start} - hard skip (+corruption) expected")
+            found_at_text_idx = 0
+
 
         # find the segment that contains the start idx
         # and the index of the text within that segment
@@ -314,7 +318,11 @@ def align_transcript_to_audio(
         align_skipped_start_from = max(top_aligned_timestamp, confusing_segments_to_skip[0].start)
         align_skipped_end_at = first_segment_to_continue_aligning.start if first_segment_to_continue_aligning else None
         audio = SeekableAudioLoader(
-            str(audio_file), sr=SAMPLE_RATE, stream=True, load_sections=[[align_skipped_start_from, align_skipped_end_at]], test_first_chunk=False
+            str(audio_file),
+            sr=SAMPLE_RATE,
+            stream=True,
+            load_sections=[[align_skipped_start_from, align_skipped_end_at]],
+            test_first_chunk=False,
         )
 
         # this may break due to low prob - that's ok - we given up on those segments for now.
