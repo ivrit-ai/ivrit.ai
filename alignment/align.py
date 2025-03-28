@@ -6,6 +6,7 @@ from faster_whisper import WhisperModel
 from stable_whisper.whisper_compatibility import SAMPLE_RATE
 from tqdm import tqdm
 
+from alignment.seekable_audio_loader import SeekableAudioLoader
 from alignment.utils import (
     create_transcript_from_segments,
     find_probable_segment_before_time,
@@ -13,7 +14,6 @@ from alignment.utils import (
     get_confusion_zone,
     get_text_from_segments,
 )
-from alignment.seekable_audio_loader import SeekableAudioLoader
 from utils.vtt import vtt_to_whisper_result
 
 
@@ -30,6 +30,7 @@ def align_transcript_to_audio(
     zero_duration_segments_failure_ratio: float = 0.2,
     max_confusion_zone_skip_duration: int = 120,
     min_confusion_zone_skip_duration: int = 15,
+    entry_id: str = None,
 ) -> stable_whisper.WhisperResult:
     """Align a transcript to audio using a robust, confusion-aware alignment algorithm.
 
@@ -64,6 +65,7 @@ def align_transcript_to_audio(
             What is the mexium allowed skip in seconds.
         min_confusion_zone_skip_duration: When a skip over a confusion zone is needed -
             What is the min allowed skip in seconds.
+        entry_id: helps with logging in parallel processing setting. Optional.
 
     Returns:
         A WhisperResult containing the aligned transcript.
@@ -92,7 +94,7 @@ def align_transcript_to_audio(
     to_align_next = unaligned.text  # We aligns text not segments
 
     # Create a progress bar for the alignment process
-    progress_bar = tqdm(total=audio_duration, unit="sec", desc="Global alignment")
+    progress_bar = tqdm(total=audio_duration, unit="sec", desc=f"Aligning {entry_id or 'Entry'}")
     while not done:
         # Get the audio slice
         audio = SeekableAudioLoader(
@@ -229,9 +231,10 @@ def align_transcript_to_audio(
         # contain text already aligned.
         # This is a hail-mery attempt
         if found_at_text_idx == -1:
-            progress_bar.write(f"Could not find matching text in confusion zone, slice_start: {slice_start} - hard skip (+corruption) expected")
+            progress_bar.write(
+                f"Could not find matching text in {entry_id or 'entry'} confusion zone, slice_start: {slice_start} - hard skip (+corruption) expected"
+            )
             found_at_text_idx = 0
-
 
         # find the segment that contains the start idx
         # and the index of the text within that segment

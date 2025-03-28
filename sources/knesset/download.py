@@ -178,6 +178,12 @@ def main() -> None:
         help="Filter to process only the specified plenum ids (can be specified multiple times)",
     )
     parser.add_argument(
+        "--max-recordings",
+        type=int,
+        default=None,
+        help="Maximum number of plenum recordings to process in this run",
+    )
+    parser.add_argument(
         "--logs-folder",
         type=str,
         help="Folder to store log files. If not specified, logging is disabled.",
@@ -210,6 +216,9 @@ def main() -> None:
     # Filter by plenum IDs if specified
     if args.plenum_ids:
         plenum_ids = [pid for pid in plenum_ids if pid in args.plenum_ids]
+    
+    if args.max_recordings:
+        plenum_ids = plenum_ids[:args.max_recordings]
 
     if not plenum_ids:
         print("No plenum IDs found in the input media directory.")

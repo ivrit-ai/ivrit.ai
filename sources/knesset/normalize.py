@@ -142,6 +142,7 @@ class KnessetNormalizer(BaseNormalizer):
                     model=self.model,
                     language=language,
                     zero_duration_segments_failure_ratio=self.failure_threshold,
+                    entry_id=entry_id
                 )
             except Exception as e:
                 tqdm.write(f" - Alignment failed for entry {entry_id}: {e}")

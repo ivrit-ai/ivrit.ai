@@ -527,7 +527,7 @@ def process_transcripts(
         plenum_output_dir.mkdir(parents=True, exist_ok=True)
 
         if not force_reprocess and (plenum_output_dir / "transcript.txt").exists():
-            print(f"Skipping plenum {plenum_id} - transcript already exists")
+            print(f"Skipping transcript creation of plenum {plenum_id} - transcript already exists")
             return True
 
         # Extract title from XML
