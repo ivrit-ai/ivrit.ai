@@ -3,7 +3,7 @@ import pathlib
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -86,21 +86,6 @@ def extract_time_pointer_array_from_xml(protocol_xml_path: pathlib.Path) -> Opti
     except Exception as e:
         print(f"Error extracting bk array from XML: {e}")
         return None
-
-
-def extract_transcription_from_html(html_path: pathlib.Path) -> Dict:
-    """
-    Extract transcription data from an HTML file.
-
-    Args:
-        html_path: Path to the HTML file
-
-    Returns:
-        Dict: A dictionary containing the transcription data
-    """
-    # This is a stub function that will be implemented later
-    # For now, we'll just return an empty dictionary with the file path
-    return {"file_path": str(html_path), "transcription": "Placeholder transcription data"}
 
 
 # Plenum Custom HTML transcripts structure
@@ -244,6 +229,35 @@ def extract_transcript_parts_from_elements(root_element: PageElement, context: d
     else:
         raise ValueError(f"What should I do with type: {type(root_element)} and str: {str(root_element)}")
 
+# Common formatting usage in the transcripts which should not be included in the captions
+translate_formatting_to_replace_with_space = {
+    # en-dash characters
+    0x2013: " ",
+    0x2014: " ",
+}
+
+
+def normalize_text_for_audio_tasks(text: str) -> str:
+    # remove square bracketed text
+    text = re.sub(r"\[.*?\]", "", text)
+    
+    # Replace en-dashes which stand for an end of sentence punctuation.
+    # A semantic formatting that looks like "word – word" closely means "word. word" or even closer "word, word"
+    # and this is much more familiar to downatream NLP tasks. We will use that more common formatting in the subtitles
+    # output.
+    text = re.sub(r"(\w)(\s[\u2013\u2014])", "\g<1>,", text)
+
+    # The ";"" symbol marks a punctuation stronger than a "," but weaker than
+    # a "." but is not as commonly supported in downstream NLP tasks. We choose to replace that
+    # with a "," to simplify the output.
+    text = re.sub(r"(\w);", "\g<1>,", text)
+
+    # Remove formatting other than the above
+    text = text.translate(translate_formatting_to_replace_with_space)
+    
+    # Deduplicate whitespaces
+    text = re.sub(r"\s+", " ", text)
+    return text
 
 def parse_plenum_transcript(content, time_pointers_arr_np) -> Tuple[str, List[TimedSegment]]:
     """
@@ -313,24 +327,6 @@ def parse_plenum_transcript(content, time_pointers_arr_np) -> Tuple[str, List[Ti
     all_processed_text = "".join(text_only_parts)
 
     return all_processed_text, timestamp_segments
-
-
-# Common formatting usage in the transcripts which should not be included in the captions
-translate_formatting_to_replace_with_space = {
-    # en-dash characters
-    0x2013: " ",
-    0x2014: " ",
-}
-
-
-def normalize_text_as_caption_text(text: str) -> str:
-    # remove square bracketed text
-    text = re.sub(r"\[.*?\]", "", text)
-    # Remove formatting
-    text = text.translate(translate_formatting_to_replace_with_space)
-    # Deduplicate whitespaces
-    text = re.sub(r"\s+", " ", text)
-    return text
 
 
 max_first_caption_inclusion_lookback_window_length = 120
@@ -414,7 +410,7 @@ def update_word_duration_stats(
     return updated_avg_word_duration
 
 
-def create_recording_transcript_segments(text: str, time_segments: List[TimedSegment]) -> list[dict]:
+def create_recording_transcript_timed_segments(text: str, time_segments: List[TimedSegment]) -> list[dict]:
     # Ensure segments are sorted by timestamp
     time_segments = sorted(time_segments, key=lambda segment: segment.timestamp)
     result_segments = []
@@ -442,7 +438,7 @@ def create_recording_transcript_segments(text: str, time_segments: List[TimedSeg
                 merge_start_loc = None
 
             text_range_slice = slice(int(slice_start_loc), int(segment.end_loc))
-            extracted_text_for_slice = normalize_text_as_caption_text(text[text_range_slice])
+            extracted_text_for_slice = normalize_text_for_audio_tasks(text[text_range_slice])
 
             # If the slice ends with a word character - this may be a marker mid-word.
             # check if the adjacent slice starts with a word character - if so - merge them.
@@ -450,7 +446,7 @@ def create_recording_transcript_segments(text: str, time_segments: List[TimedSeg
                 next_slice_start_loc = time_segments[i + 1].start_loc
                 next_slice_end_loc = time_segments[i + 1].end_loc
                 # if the first character is a word character - merge the slices
-                next_slice_text = normalize_text_as_caption_text(
+                next_slice_text = normalize_text_for_audio_tasks(
                     text[int(next_slice_start_loc) : int(next_slice_end_loc)]
                 )
                 if re.match(r"\w", next_slice_text[0]):
@@ -526,7 +522,7 @@ def process_transcripts(
         plenum_output_dir = output_dir / plenum_id
         plenum_output_dir.mkdir(parents=True, exist_ok=True)
 
-        if not force_reprocess and (plenum_output_dir / "transcript.txt").exists():
+        if not force_reprocess and (plenum_output_dir / "raw.transcript.txt").exists():
             print(f"Skipping transcript creation of plenum {plenum_id} - transcript already exists")
             return True
 
@@ -548,20 +544,25 @@ def process_transcripts(
         transcript_text, timestamp_segments = parse_plenum_transcript(html_transcript, bk_array)
 
         # Save the transcript text
-        transcript_text_path = plenum_output_dir / "transcript.txt"
-        with open(transcript_text_path, "w", encoding="utf-8") as f:
+        raw_transcript_text_path = plenum_output_dir / "raw.transcript.txt"
+        with open(raw_transcript_text_path, "w", encoding="utf-8") as f:
             f.write(transcript_text)
 
         # Save the timestamp index
-        timestamp_index_path = plenum_output_dir / "transcript.timeindex.csv"
+        timestamp_index_path = plenum_output_dir / "raw.transcript.timeindex.csv"
         save_timestamp_index_to_csv(timestamp_segments, timestamp_index_path)
 
         print("Creating a segments file of the transcript...")
-        result_segments = create_recording_transcript_segments(transcript_text, timestamp_segments)
-        WhisperResult(result_segments).save_as_json(str(plenum_output_dir / f"transcript.json"))
+        result_segments = create_recording_transcript_timed_segments(transcript_text, timestamp_segments)
+        result_segments_as_whisper_results = WhisperResult(result_segments)
+        result_segments_as_whisper_results.save_as_json(str(plenum_output_dir / f"transcript.json"))
+
+        normalized_transcript_text_path = plenum_output_dir / "normalized.transcript.txt"
+        with open(normalized_transcript_text_path, "w", encoding="utf-8") as f:
+            f.write(result_segments_as_whisper_results.text)
 
         print(f"Successfully processed {len(protocol_html_paths)} HTML files for plenum {plenum_id}")
-        print(f"Transcript saved to {transcript_text_path}")
+        print(f"Transcript saved to {raw_transcript_text_path}")
         print(f"Timestamp index saved to {timestamp_index_path}")
 
         return True
