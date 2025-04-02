@@ -2,8 +2,7 @@
 
 import argparse
 import pathlib
-import mutagen.mp3
-import pydub
+import av
 
 from utils import utils
 
@@ -14,20 +13,39 @@ def calculate_total_length(args):
     print(f"Processing {len(audio_files)} files...")
 
     total_length = 0
+    subtitled_length = 0
+    subtitled_count = 0
 
     for idx, f in enumerate(audio_files):
-        if idx % 10000 == 0:
+        if idx % 100 == 0:
             print(f"Done processing {idx} files.")
 
-        total_length += mutagen.mp3.MP3(f).info.length
+        f = pathlib.Path(f)
 
-    print(f"Done processing all files. Length in hours: {total_length/60/60}.")
+        # Get duration using PyAV
+        fav = av.open(str(f))
+        duration = float(fav.duration) / av.time_base
+        total_length += duration
+
+        # Check for subtitle file in both possible locations
+        subtitle_path1 = f.with_suffix(f.suffix + '.iw.vtt')  # file.m4a.iw.vtt
+        subtitle_path2 = f.with_suffix('.iw.vtt')  # file.iw.vtt
+        if subtitle_path1.exists() or subtitle_path2.exists():
+            subtitled_length += duration
+            subtitled_count += 1
+
+    print(f"\nResults:")
+    print(f"Total audio files: {len(audio_files)}")
+    print(f"Files with subtitles: {subtitled_count}")
+    print(f"Total duration: {total_length/60/60:.2f} hours")
+    print(f"Duration with subtitles: {subtitled_length/60/60:.2f} hours")
+    print(f"Percentage with subtitles: {(subtitled_count/len(audio_files))*100:.1f}%")
 
 
 if __name__ == "__main__":
     # Define an argument parser
     parser = argparse.ArgumentParser(
-        description="Search for audio files in a directory excluding specified subdirectories"
+        description="Calculate total duration of audio files and files with subtitles"
     )
 
     # Add the arguments

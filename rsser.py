@@ -1,100 +1,153 @@
 #!/usr/bin/python3
 
+from yt_dlp import YoutubeDL
+from feedgen.feed import FeedGenerator
+from datetime import datetime, timezone
+import xml.dom.minidom
 import argparse
-from datetime import datetime
-import dotenv
+from tqdm import tqdm
 import os
 
-from googleapiclient.discovery import build
-from feedgen.feed import FeedGenerator
-import html
+def fetch_channel_info(channel_url, limit=None):
+    """Fetch basic channel information and video URLs."""
+    ydl_opts = {
+        'extract_flat': True,  # Only fetch basic metadata
+        'quiet': True,
+        'ignoreerrors': True,
+        'playlist_items': f'1-{limit}' if limit else None,
+    }
 
+    def collect_entries(entries):
+        """Recursively collect entries from playlists."""
+        video_urls = []
+        for entry in entries:
+            if not entry:
+                continue
+            if entry.get('_type') == 'playlist' and entry.get('entries'):
+                # Recursively collect entries from nested playlists
+                video_urls.extend(collect_entries(entry['entries']))
+            elif entry.get('url'):
+                video_urls.append({
+                    'url': entry['url'],
+                    'id': entry.get('id', '')
+                })
+        return video_urls
 
-dotenv.load_dotenv()
+    with YoutubeDL(ydl_opts) as ydl:
+        try:
+            info = ydl.extract_info(channel_url, download=False)
+            if '_type' in info:
+                if info['_type'] == 'playlist':
+                    channel_info = {
+                        'title': info.get('title', 'YouTube Channel Feed'),
+                        'description': info.get('description', 'Full feed of all videos from the channel'),
+                        'id': info.get('id', 'unknown'),
+                    }
+                    # Extract video URLs and IDs from all playlists
+                    video_urls = collect_entries(info.get('entries', []))
+                    return channel_info, video_urls
+                else:
+                    return {
+                        'title': 'YouTube Channel Feed',
+                        'description': 'Full feed of all videos from the channel',
+                        'id': 'single_video'
+                    }, [{'url': info['url'], 'id': info.get('id', '')}]
+        except Exception as e:
+            print(f"❌ Error fetching channel info: {e}")
+            return None, []
 
+def fetch_video_details(video_url):
+    """Fetch detailed information for a single video."""
+    ydl_opts = {
+        'extract_flat': False,  # Fetch full metadata
+        'quiet': True,
+        'ignoreerrors': True,
+    }
 
-def get_all_videos_by_year(api_key, channel_id, year):
-    youtube = build("youtube", "v3", developerKey=api_key)
-    all_videos = []
-    page_token = None
+    with YoutubeDL(ydl_opts) as ydl:
+        try:
+            info = ydl.extract_info(video_url, download=False)
+            if info:
+                return {
+                    'id': info.get('id', ''),
+                    'title': info.get('title', 'No title'),
+                    'description': info.get('description', ''),
+                    'upload_date': info.get('upload_date', ''),
+                    'duration': info.get('duration', 0),
+                }
+            return None
+        except Exception as e:
+            print(f"❌ Error fetching video details for {video_url}: {e}")
+            return None
 
-    while True:
-        request = youtube.search().list(
-            part="snippet",
-            channelId=channel_id,
-            maxResults=50,
-            pageToken=page_token,
-            publishedAfter=datetime(year, 1, 1).isoformat() + "Z",
-            publishedBefore=datetime(year + 1, 1, 1).isoformat() + "Z",
-            type="video",
-            order="date",
-        )
-        response = request.execute()
-
-        for item in response.get("items", []):
-            details = youtube.videos().list(part="snippet,contentDetails", id=item["id"]["videoId"]).execute()
-            all_videos.append(details["items"][0])
-
-        page_token = response.get("nextPageToken", None)
-        if page_token is None:
-            break
-
-    return all_videos
-
-
-def get_all_videos(api_key, channel_id, start_year, end_year):
-    all_videos = []
-
-    for year in range(end_year, start_year - 1, -1):
-        print(f"Fetching videos for {year}...")
-        yearly_videos = get_all_videos_by_year(api_key, channel_id, year)
-        print(f"Done fetching {len(yearly_videos)} videos.")
-        all_videos += yearly_videos
-
-    return all_videos
-
-
-def generate_rss_feed(channel_id, videos):
+def generate_rss(channel_info, videos, channel_url):
     fg = FeedGenerator()
-    fg.id(f"https://www.youtube.com/channel/{channel_id}")
-    fg.title(f"YouTube Channel Videos for {channel_id}")
-    fg.link(href=f"https://www.youtube.com/channel/{channel_id}", rel="alternate")
-    fg.description(f"Latest videos from the YouTube channel {channel_id}")
-    fg.language("en")
+    fg.title(channel_info['title'])
+    fg.link(href=channel_url)
+    fg.description(channel_info['description'])
 
-    for video in videos:
-        video_details = video["snippet"]
-        video_url = f'https://www.youtube.com/watch?v={video["id"]}'
+    # Process videos with progress bar
+    for video in tqdm(videos, desc=f"Processing {channel_info['title']}", unit="video"):
+        if not video:
+            continue
 
         fe = fg.add_entry()
-        fe.id(video["id"])
-        fe.title(html.unescape(video_details["title"]))
-        fe.link(href=video_url)
-        fe.published(video_details["publishedAt"])
-        fe.description(html.unescape(video_details["description"]))
-        if "tags" in video_details:
-            for tag in video_details["tags"]:
-                fe.category(term=tag)
+        video_id = video.get("id")
+        title = video.get("title", "No title")
+        description = video.get("description", "")
+        upload_date = video.get("upload_date")
+        pub_date = datetime.strptime(upload_date, "%Y%m%d").replace(tzinfo=timezone.utc) if upload_date else datetime.now(timezone.utc)
 
-        fe.enclosure(video_url, 0, "video/mp4")
+        fe.title(title)
+        fe.link(href=f'https://www.youtube.com/watch?v={video_id}')
+        fe.guid(video_id)
+        fe.description(description)
+        fe.pubDate(pub_date)
+        
+        # Add enclosure for the video
+        fe.enclosure(
+            url=f'https://www.youtube.com/watch?v={video_id}',
+            length=video.get('duration', 0) * 1024 * 1024,  # Approximate size in bytes
+            type='video/mp4'
+        )
 
-    return fg.rss_str(pretty=True)
+    # Get raw XML
+    raw_xml = fg.rss_str(pretty=False)
 
+    # Pretty-print the XML
+    pretty_xml = xml.dom.minidom.parseString(raw_xml).toprettyxml(indent="  ")
 
-# Set up argument parsing
-parser = argparse.ArgumentParser(description="Generate an RSS feed from a YouTube channel.")
-parser.add_argument("--channel_id", type=str, required=True, help="YouTube Channel ID")
-parser.add_argument("--output_file", type=str, required=True, help="Output file name (e.g., feed.xml)")
-parser.add_argument("--from-year", type=int, required=True, help="Only collect videos from or after this year.")
-parser.add_argument("--to-year", type=int, required=True, help="Only collect videos from or before this year.")
+    # Generate filename from channel title and ID
+    output_file = 'rss.xml' 
 
-args = parser.parse_args()
+    # Write to file
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write(pretty_xml)
 
-videos = get_all_videos(os.environ["YOUTUBE_API_KEY"], args.channel_id, args.from_year, args.to_year)
-rss_feed = generate_rss_feed(args.channel_id, videos)
+    print(f"✅ RSS feed written to: {output_file}")
 
-# Write the feed to the specified output file
-with open(args.output_file, "w", encoding="utf-8") as file:
-    if isinstance(rss_feed, bytes):
-        rss_feed = rss_feed.decode("utf-8")
-    file.write(rss_feed)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Generate RSS feed from YouTube channel")
+    parser.add_argument("channel_id", help="YouTube channel ID")
+    parser.add_argument("--limit", type=int, help="Limit the number of episodes to process")
+    args = parser.parse_args()
+
+    channel_url = f"https://www.youtube.com/channel/{args.channel_id}"
+    print("🔍 Fetching channel information...")
+    channel_info, video_urls = fetch_channel_info(channel_url, args.limit)
+    
+    if channel_info:
+        print(f"📼 Found {len(video_urls)} videos. Fetching details...")
+        # Fetch detailed information for each video
+        videos = []
+        for video_url in tqdm(video_urls, desc="Fetching video details", unit="video"):
+            if video_url and video_url.get('url'):
+                video_details = fetch_video_details(video_url['url'])
+                if video_details:
+                    videos.append(video_details)
+        
+        print(f"✅ Successfully fetched details for {len(videos)} videos. Generating RSS...")
+        generate_rss(channel_info, videos, channel_url)
+    else:
+        print("❌ Failed to fetch channel information")
+
