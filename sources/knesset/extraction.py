@@ -1,4 +1,5 @@
 import csv
+import logging
 import pathlib
 import re
 import xml.etree.ElementTree as ET
@@ -12,6 +13,8 @@ from stable_whisper import WhisperResult
 
 from sources.knesset.cleanup import cleanup_time_index
 
+# Create a logger for this module
+logger = logging.getLogger(__name__)
 
 @dataclass
 class TimedSegment:
@@ -85,7 +88,7 @@ def extract_time_pointer_array_from_xml(protocol_xml_path: pathlib.Path) -> Opti
             return cleaned_up_time_pointer_array
     except Exception as e:
         print(f"Error extracting bk array from XML: {e}")
-        return None
+        raise e
 
 
 # Plenum Custom HTML transcripts structure
@@ -114,19 +117,25 @@ def gather_html_transcripts(html_paths: List[pathlib.Path]) -> str:
         str: Concatenated HTML content wrapped in a root div
     """
 
-    # Extract segment numbers from file names and sort by "from segment #"
-    def extract_from_segment(path):
+    # Extract start time numbers from file names and sort by "time start" values
+    def extract_sort_value_from_html_path(path):
         # File name format: "protocol_<plenum id>_<from segment #>_<to segment #>_<from ts>_<to ts>_bulk.html"
         parts = path.name.split("_")
         if len(parts) >= 3:
             try:
-                return int(parts[4])  # <from time secs> is at index 4
+                # <from time secs> is at index 4
+                start_time_part = int(parts[4])
+                return start_time_part
             except ValueError:
                 pass
         return 0  # Default value if extraction fails
 
+    paths_and_sort_values = zip(html_paths, [extract_sort_value_from_html_path(path) for path in html_paths])
+    # drop any paths with negative sort values (those are garbage data)
+    paths_and_sort_values = [(path, sort_value) for path, sort_value in paths_and_sort_values if sort_value >= 0]
+
     # Sort paths by "from segment #"
-    sorted_paths = sorted(html_paths, key=extract_from_segment)
+    sorted_paths = [path for path, _ in sorted(paths_and_sort_values, key=lambda psv: psv[1])]
 
     # Read and concatenate all HTML contents
     html_transcript_snippet = ""
@@ -164,7 +173,7 @@ def extract_transcript_parts_from_elements(root_element: PageElement, context: d
             if len(text_idx_matches) > 0:
                 text_ts_idx = int(text_idx_matches[0])
 
-            if text_ts_idx is not None:
+            if text_ts_idx is not None and len(context["time_pointers_arr_np"]) > text_ts_idx:
                 prev_text_ts: pd.Timedelta = context["current_text_ts"]
                 time_at_idx: pd.Timedelta = pd.to_timedelta(context["time_pointers_arr_np"][text_ts_idx], "s")
 
@@ -229,6 +238,7 @@ def extract_transcript_parts_from_elements(root_element: PageElement, context: d
     else:
         raise ValueError(f"What should I do with type: {type(root_element)} and str: {str(root_element)}")
 
+
 # Common formatting usage in the transcripts which should not be included in the captions
 translate_formatting_to_replace_with_space = {
     # en-dash characters
@@ -240,7 +250,7 @@ translate_formatting_to_replace_with_space = {
 def normalize_text_for_audio_tasks(text: str) -> str:
     # remove square bracketed text
     text = re.sub(r"\[.*?\]", "", text)
-    
+
     # Replace en-dashes which stand for an end of sentence punctuation.
     # A semantic formatting that looks like "word – word" closely means "word. word" or even closer "word, word"
     # and this is much more familiar to downatream NLP tasks. We will use that more common formatting in the subtitles
@@ -254,10 +264,11 @@ def normalize_text_for_audio_tasks(text: str) -> str:
 
     # Remove formatting other than the above
     text = text.translate(translate_formatting_to_replace_with_space)
-    
+
     # Deduplicate whitespaces
     text = re.sub(r"\s+", " ", text)
     return text
+
 
 def parse_plenum_transcript(content, time_pointers_arr_np) -> Tuple[str, List[TimedSegment]]:
     """
@@ -277,7 +288,7 @@ def parse_plenum_transcript(content, time_pointers_arr_np) -> Tuple[str, List[Ti
         "time_pointers_arr_np": time_pointers_arr_np,
         "first_non_zero_ts_seen": False,
         "current_text_ts": None,
-        "latest_closed_ts_marker": 0,
+        "latest_closed_ts_marker": pd.Timedelta(0),
     }
     root_element = soup.find("div", {"id": "root"})
     page_text_parts.extend(extract_transcript_parts_from_elements(root_element, extraction_context))
@@ -504,6 +515,7 @@ def process_transcripts(
     output_dir: pathlib.Path,
     plenum_id: str,
     force_reprocess: bool = False,
+    abort_on_error: bool = False,
 ) -> bool:
     """
     Process the transcript files for a plenum.
@@ -567,5 +579,7 @@ def process_transcripts(
 
         return True
     except Exception as e:
-        print(f"Error processing transcripts for plenum {plenum_id}: {e}")
+        logger.error(f"Error processing transcripts for plenum {plenum_id}: {e}")
+        if abort_on_error:
+            raise e
         return False

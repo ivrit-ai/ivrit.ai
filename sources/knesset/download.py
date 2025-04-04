@@ -15,19 +15,32 @@ from utils.audio import extract_audio_from_media, get_audio_info
 
 
 def find_media_file(plenum_dir: pathlib.Path) -> Optional[pathlib.Path]:
-    """Find the media file (mp3, mp4, or wmv) in the plenum directory."""
+    """Find the media file (mp3, mp4, wmv, or avi) in the plenum directory.
 
+    If multiple files exist:
+    1. Prefer the largest mp4 file if any mp4 files exist
+    2. Otherwise return the largest file by size among all media types
+    """
     found_media_files = []
-    for ext in [".mp3", ".mp4", ".wmv", "avi"]:
+    for ext in [".mp3", ".mp4", ".wmv", ".avi"]:
         for file in plenum_dir.glob(f"*{ext}"):
             found_media_files.append(file)
 
     if not found_media_files:
         return None
 
-    # expect only one
-    assert len(found_media_files) == 1
-    return found_media_files[0]
+    # If only one file, return it
+    if len(found_media_files) == 1:
+        return found_media_files[0]
+
+    # If multiple files exist, check for mp4 first
+    mp4_files = [file for file in found_media_files if file.suffix.lower() == ".mp4"]
+    if mp4_files:
+        # Return the largest mp4 file
+        return max(mp4_files, key=lambda file: file.stat().st_size)
+
+    # Otherwise return the largest file among all media types
+    return max(found_media_files, key=lambda file: file.stat().st_size)
 
 
 def find_protocol_xml(plenum_transcripts_dir: pathlib.Path) -> Optional[pathlib.Path]:
@@ -156,6 +169,11 @@ def main() -> None:
         help="Force re-process of transcripts even if it exist.",
     )
     parser.add_argument(
+        "--abort-on-transcript-error",
+        action="store_true",
+        help="Will not skip after transcript processing errors, rather throw the error.",
+    )
+    parser.add_argument(
         "--force-download",
         action="store_true",
         help="Force re-download of files even if they exist.",
@@ -192,14 +210,43 @@ def main() -> None:
     # Add normalization-related arguments
     add_normalize_args(parser)
 
-    # Add logging-related arguments
-
     args = parser.parse_args()
 
     input_media_dir = pathlib.Path(args.input_media_dir)
     input_transcripts_dir = pathlib.Path(args.input_transcripts_dir)
     output_dir = pathlib.Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Configure logging based on logs_folder
+    # By default, disable all logging
+    logging.basicConfig(level=logging.CRITICAL + 1)  # Set level higher than CRITICAL to disable all logging
+
+    if hasattr(args, "logs_folder") and args.logs_folder:
+        logs_folder = pathlib.Path(args.logs_folder)
+        logs_folder.mkdir(parents=True, exist_ok=True)
+
+        # Configure root logger
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.INFO)
+
+        # Remove any existing handlers
+        for handler in root_logger.handlers[:]:
+            root_logger.removeHandler(handler)
+
+        # Create a rotating file handler
+        log_file = logs_folder / "download_log"
+        file_handler = RotatingFileHandler(log_file, maxBytes=5 * 1024 * 1024, backupCount=5)  # 5MB
+        file_handler.setLevel(logging.INFO)
+
+        # Create formatter and add it to the handler
+        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        file_handler.setFormatter(formatter)
+
+        # Add the handler to the logger
+        root_logger.addHandler(file_handler)
+
+        # Log start of process
+        logging.info(f"Starting Knesset download process with output directory: {output_dir}")
 
     # Validate input directories
     if not input_media_dir.exists() or not input_media_dir.is_dir():
@@ -216,15 +263,15 @@ def main() -> None:
     # Filter by plenum IDs if specified
     if args.plenum_ids:
         plenum_ids = [pid for pid in plenum_ids if pid in args.plenum_ids]
-    
+
     if args.max_recordings:
-        plenum_ids = plenum_ids[:args.max_recordings]
+        plenum_ids = plenum_ids[: args.max_recordings]
 
     if not plenum_ids:
-        print("No plenum IDs found in the input media directory.")
+        logging.info("No plenum IDs found in the input media directory.")
         return
 
-    print(f"Found {len(plenum_ids)} plenum IDs.")
+    logging.info(f"Found {len(plenum_ids)} plenum IDs.")
 
     # Process each plenum
     for plenum_id in tqdm(plenum_ids, desc="Processing plenums", total=len(plenum_ids)):
@@ -270,6 +317,7 @@ def main() -> None:
                 output_dir,
                 plenum_id,
                 args.force_transcript_reprocess or args.force_reprocess,
+                abort_on_error=args.abort_on_transcript_error,
             )
             if not transcript_success:
                 tqdm.write(f" - Failed to process transcripts for plenum {plenum_id}. Skipping.")
@@ -281,7 +329,9 @@ def main() -> None:
                 media_path, output_dir, plenum_id, args.force_av_reprocess or args.force_reprocess
             )
             if not av_success:
-                tqdm.write(f" - Failed to process AV for plenum {plenum_id}. Skipping.")
+                msg = f" - Failed to process AV for plenum {plenum_id}. Skipping."
+                tqdm.write(msg)
+                logging.warning(msg)
                 continue
 
             # Extract plenum date from media filename
@@ -308,39 +358,12 @@ def main() -> None:
 
             tqdm.write(f" - Successfully processed plenum {plenum_id}")
         except Exception as e:
-            tqdm.write(f" - ERROR: Unexpected error processing plenum {plenum_id}: {e}")
+            msg = f" - ERROR: Unexpected error processing plenum {plenum_id}: {e}"
+            tqdm.write(msg)
+            logging.warning(msg)
+            if args.abort_on_transcript_error:
+                raise e
             tqdm.write(f" - Skipping to next plenum")
-
-    # Configure logging based on logs_folder
-    # By default, disable all logging
-    logging.basicConfig(level=logging.CRITICAL + 1)  # Set level higher than CRITICAL to disable all logging
-
-    if hasattr(args, "logs_folder") and args.logs_folder:
-        logs_folder = pathlib.Path(args.logs_folder)
-        logs_folder.mkdir(parents=True, exist_ok=True)
-
-        # Configure root logger
-        root_logger = logging.getLogger()
-        root_logger.setLevel(logging.INFO)
-
-        # Remove any existing handlers
-        for handler in root_logger.handlers[:]:
-            root_logger.removeHandler(handler)
-
-        # Create a rotating file handler
-        log_file = logs_folder / "download_log"
-        file_handler = RotatingFileHandler(log_file, maxBytes=5 * 1024 * 1024, backupCount=5)  # 5MB
-        file_handler.setLevel(logging.INFO)
-
-        # Create formatter and add it to the handler
-        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-        file_handler.setFormatter(formatter)
-
-        # Add the handler to the logger
-        root_logger.addHandler(file_handler)
-
-        # Log start of process
-        logging.info(f"Starting Knesset download process with output directory: {output_dir}")
 
     # After downloads complete, process normalization if not skipped
     if not args.skip_normalize:
