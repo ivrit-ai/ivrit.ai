@@ -240,39 +240,10 @@ def align_transcript_to_audio(
         # and the index of the text within that segment
         curr_matched_segment_idx = 0
         index_within_segment = found_at_text_idx
-        text_len_so_far = len(segments_around_confusion_zone[curr_matched_segment_idx].text)
-        while text_len_so_far <= found_at_text_idx:
-            index_within_segment = found_at_text_idx - text_len_so_far
-            curr_matched_segment_idx += 1
-            text_len_so_far += len(segments_around_confusion_zone[curr_matched_segment_idx].text)
-
-        # get the initial segment
-        initial_unaligned_segment_in_confusion_zone = segments_around_confusion_zone[curr_matched_segment_idx]
-        initial_unaligned_segment_id_in_confusion_zone = initial_unaligned_segment_in_confusion_zone.id
 
         # Recall the latest known aligned timestamp - upcoming segments cannot
         # timestamp below it
         top_aligned_timestamp = aligned_pieces[-1].end if aligned_pieces else 0
-
-        # and if the text is mid-point within the segment. we need only the matched part.
-        if index_within_segment > 0:
-            initial_unaligned_segment_in_confusion_zone = stable_whisper.result.Segment(
-                # The start of the sliced segment is:
-                # Where we intended to start - if probable prev segment was found (slice_start)
-                # or the original start which had no probable segment at all (slice_start)
-                # and never less than the highest aligned timestamp since this
-                # will break the monotonicity of the aligned timestamps (top_aligned_timestamp)
-                start=min(
-                    max(
-                        top_aligned_timestamp,
-                        slice_start,
-                    ),
-                    # But cannot go beyond the end of this segment
-                    initial_unaligned_segment_in_confusion_zone.end,
-                ),
-                end=max(top_aligned_timestamp, initial_unaligned_segment_in_confusion_zone.end),
-                text=initial_unaligned_segment_in_confusion_zone.text[index_within_segment:],
-            )
 
         # in the confusion zone we cannot trust the aligned times - so we work on the unaligned
         # which is expected to have reasonable approximate timing
@@ -282,82 +253,126 @@ def align_transcript_to_audio(
         )
 
         # Ensure the segments we will align next start after the max_confusion_zone_end
-        # os the skip will be effective.
+        # so the skip will be effective.
         if (
             segments_after_assumed_confusion_zone
             and segments_after_assumed_confusion_zone[0].start < max_confusion_zone_end
         ):
             segments_after_assumed_confusion_zone = segments_after_assumed_confusion_zone[1:]
+        
+        # if any segments found covering the confusion zone - analyze them to figure
+        # out what exactly is to be skipped or already aligned
+        if segments_around_confusion_zone:
+            text_len_so_far = len(segments_around_confusion_zone[curr_matched_segment_idx].text)
+            while text_len_so_far <= found_at_text_idx:
+                index_within_segment = found_at_text_idx - text_len_so_far
+                curr_matched_segment_idx += 1
+                text_len_so_far += len(segments_around_confusion_zone[curr_matched_segment_idx].text)
+
+            # get the initial segment
+            initial_unaligned_segment_in_confusion_zone = segments_around_confusion_zone[curr_matched_segment_idx]
+            initial_unaligned_segment_id_in_confusion_zone = initial_unaligned_segment_in_confusion_zone.id
+
+            # and if the text is mid-point within the segment. we need only the matched part.
+            if index_within_segment > 0:
+                initial_unaligned_segment_in_confusion_zone = stable_whisper.result.Segment(
+                    # The start of the sliced segment is:
+                    # Where we intended to start - if probable prev segment was found (slice_start)
+                    # or the original start which had no probable segment at all (slice_start)
+                    # and never less than the highest aligned timestamp since this
+                    # will break the monotonicity of the aligned timestamps (top_aligned_timestamp)
+                    start=min(
+                        max(
+                            top_aligned_timestamp,
+                            slice_start,
+                        ),
+                        # But cannot go beyond the end of this segment
+                        initial_unaligned_segment_in_confusion_zone.end,
+                    ),
+                    end=max(top_aligned_timestamp, initial_unaligned_segment_in_confusion_zone.end),
+                    text=initial_unaligned_segment_in_confusion_zone.text[index_within_segment:],
+                )
+
 
         # If no segments after the confusion zone, we are done
-        # make sure all unaligned are added to results before existing
         if not segments_after_assumed_confusion_zone:
             done = True
-
-            confusing_segments_to_skip = unaligned.segments[
-                initial_unaligned_segment_id_in_confusion_zone
-                # +1, since we will prepend this first segment (it might required prefix removal)
-                + 1 :
-            ]
             first_segment_to_continue_aligning = None
         else:
             first_segment_to_continue_aligning = segments_after_assumed_confusion_zone[0]
 
-            # find the segments within the confusion zone that we will skip
-            confusing_segments_to_skip = unaligned.segments[
-                initial_unaligned_segment_id_in_confusion_zone
-                # +1, since we will prepend this first segment (it might required prefix removal)
-                + 1 : first_segment_to_continue_aligning.id
-            ]
 
-        # prepend the initial segment (which might have had prefix removal)
-        # containing only the part which is skipped
-        confusing_segments_to_skip = [initial_unaligned_segment_in_confusion_zone] + confusing_segments_to_skip
+        # If segments found within/around confusion zone
+        # Handle their skipping, and adding them to the "aligned" pieces
+        # as if they were aligned.
+        if segments_around_confusion_zone:
+            # make sure all unaligned are added to results before existing
+            if done:
+                confusing_segments_to_skip = unaligned.segments[
+                    initial_unaligned_segment_id_in_confusion_zone
+                    # +1, since we will prepend this first segment (it might required prefix removal)
+                    + 1 :
+                ]
+            else:
+                # find the segments within the confusion zone that we will skip
+                confusing_segments_to_skip = unaligned.segments[
+                    initial_unaligned_segment_id_in_confusion_zone
+                    # +1, since we will prepend this first segment (it might required prefix removal)
+                    + 1 : first_segment_to_continue_aligning.id
+                ]
+        
+            # prepend the initial segment (which might have had prefix removal)
+            # containing only the part which is skipped
+            confusing_segments_to_skip = [initial_unaligned_segment_in_confusion_zone] + confusing_segments_to_skip
 
-        # Before comitting the skipped segments - we will align them to the audio slice they reside over
-        # this would not create high quality alignment probably - but will produce (arbitrary) word timings
-        # that allow those segmwnts to co-exist with the propelry aliged segments.
-        skipped_text_to_align = get_text_from_segments(confusing_segments_to_skip)
-        align_skipped_start_from = max(top_aligned_timestamp, confusing_segments_to_skip[0].start)
-        align_skipped_end_at = first_segment_to_continue_aligning.start if first_segment_to_continue_aligning else None
-        audio = SeekableAudioLoader(
-            str(audio_file),
-            sr=SAMPLE_RATE,
-            stream=True,
-            load_sections=[[align_skipped_start_from, align_skipped_end_at]],
-            test_first_chunk=False,
-        )
+            # Before comitting the skipped segments - we will align them to the audio slice they reside over
+            # this would not create high quality alignment probably - but will produce (arbitrary) word timings
+            # that allow those segmwnts to co-exist with the propelry aliged segments.
+            skipped_text_to_align = get_text_from_segments(confusing_segments_to_skip)
+            align_skipped_start_from = max(top_aligned_timestamp, confusing_segments_to_skip[0].start)
+            align_skipped_end_at = first_segment_to_continue_aligning.start if first_segment_to_continue_aligning else None
+            audio = SeekableAudioLoader(
+                str(audio_file),
+                sr=SAMPLE_RATE,
+                stream=True,
+                load_sections=[[align_skipped_start_from, align_skipped_end_at]],
+                test_first_chunk=False,
+            )
 
-        # this may break due to low prob - that's ok - we given up on those segments for now.
-        aligned_skipped: stable_whisper.WhisperResult = model.align(
-            audio, skipped_text_to_align, language=language, failure_threshold=zero_duration_segments_failure_ratio
-        )
+            # this may break due to low prob - that's ok - we given up on those segments for now.
+            aligned_skipped: stable_whisper.WhisperResult = model.align(
+                audio, skipped_text_to_align, language=language, failure_threshold=zero_duration_segments_failure_ratio
+            )
 
-        # Ensure none of the segments has a start/end below the top aligned timestamp
-        # or over the confusion zone audio slice end
-        for segment in aligned_skipped:
-            for word in segment.words:
-                word.start = max(word.start, top_aligned_timestamp)
-                word.end = max(word.end, word.start)
-                if align_skipped_end_at:
-                    word.end = min(align_skipped_end_at, word.end)
-                # Start cannot be above the end
-                word.start = min(word.end, word.start)
+            # Ensure none of the segments has a start/end below the top aligned timestamp
+            # or over the confusion zone audio slice end
+            for segment in aligned_skipped:
+                for word in segment.words:
+                    word.start = max(word.start, top_aligned_timestamp)
+                    word.end = max(word.end, word.start)
+                    if align_skipped_end_at:
+                        word.end = min(align_skipped_end_at, word.end)
+                    # Start cannot be above the end
+                    word.start = min(word.end, word.start)
 
-        aligned_pieces.extend(aligned_skipped.segments)  # consider this done (although it's unaligned == estimated)
+            aligned_pieces.extend(aligned_skipped.segments)  # consider this done (although it's unaligned == estimated)
 
+            # Mark the top text we took from the unaligned - so we cannot match earlier than that
+            # on next iterations
+            top_matched_unaligned_timestamp = confusing_segments_to_skip[-1].end
+
+        
+        # Prepare for next align attempt
         if not done:
             to_align_next = get_text_from_segments(segments_after_assumed_confusion_zone)
 
-            # next audio start is the confusion zone end
+            # next audio start is the confusion zone end or the start of the
+            # first segment to align - which ever comes first
+            # slice_start = min(max_confusion_zone_end, first_segment_to_continue_aligning.start)
             slice_start = first_segment_to_continue_aligning.start
 
             # Update progress bar
-            progress_bar.update(slice_start - progress_bar.n)
-
-        # Mark the top text we took from the unaligned - so we cannot match earlier than that
-        # on next iterations
-        top_matched_unaligned_timestamp = confusing_segments_to_skip[-1].end
+            progress_bar.update(slice_start - progress_bar.n)        
 
         # Forget prev confusion zone
         min_confusion_zone_start = 0
