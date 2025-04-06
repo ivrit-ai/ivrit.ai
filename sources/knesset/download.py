@@ -276,8 +276,6 @@ def main() -> None:
     # Process each plenum
     for plenum_id in tqdm(plenum_ids, desc="Processing plenums", total=len(plenum_ids)):
         try:
-            tqdm.write(f"Processing plenum: {plenum_id}")
-
             plenum_av_dir = input_media_dir / plenum_id
 
             # Check if this plenum has already been processed
@@ -308,6 +306,8 @@ def main() -> None:
             if not protocol_html_paths:
                 tqdm.write(f" - No protocol HTML files found for plenum {plenum_id}. Skipping.")
                 continue
+
+            tqdm.write(f"Processing plenum: {plenum_id}")
 
             # Process transcripts
             tqdm.write(" - Processing transcripts...")
