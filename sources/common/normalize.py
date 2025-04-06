@@ -187,7 +187,10 @@ def normalize_entries(
                 try:
                     future.result()
                 except Exception as e:
-                    print(f"Task raised an exception: {e}")
+                    # The processor is responsilbe to catch and suppress if skipping
+                    # after error is required. Here, the runner assumes any raised
+                    # exception needs to bubble up
+                    raise e
     except KeyboardInterrupt:
         print("KeyboardInterrupt received! Cancelling remaining tasks...")
         for f in futures:

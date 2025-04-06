@@ -169,9 +169,9 @@ def main() -> None:
         help="Force re-process of transcripts even if it exist.",
     )
     parser.add_argument(
-        "--abort-on-transcript-error",
+        "--abort-on-error",
         action="store_true",
-        help="Will not skip after transcript processing errors, rather throw the error.",
+        help="Will not skip processing errors, rather throw the error and abort the whole run.",
     )
     parser.add_argument(
         "--force-download",
@@ -317,7 +317,7 @@ def main() -> None:
                 output_dir,
                 plenum_id,
                 args.force_transcript_reprocess or args.force_reprocess,
-                abort_on_error=args.abort_on_transcript_error,
+                abort_on_error=args.abort_on_error,
             )
             if not transcript_success:
                 tqdm.write(f" - Failed to process transcripts for plenum {plenum_id}. Skipping.")
@@ -377,6 +377,7 @@ def main() -> None:
             force_rescore=args.force_rescore,
             failure_threshold=args.failure_threshold,
             plenum_ids=args.plenum_ids,
+            abort_on_error=args.abort_on_error,
         )
 
     # Generate manifest if not skipped

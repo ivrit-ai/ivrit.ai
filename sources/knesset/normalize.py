@@ -77,6 +77,7 @@ class KnessetNormalizer(BaseNormalizer):
         entry_dir: pathlib.Path,
         force_reprocess: bool = False,
         force_rescore: bool = False,
+        abort_on_error: bool = False,
     ) -> bool:
         """
         Override the base normalize_entry method to use align_transcript_to_audio instead of stable_ts directly.
@@ -94,9 +95,6 @@ class KnessetNormalizer(BaseNormalizer):
 
         # Start timing the normalization process
         start_time = time.time()
-        
-        logger.info(f"Starting normalization of entry {entry_id}")
-        tqdm.write(f"Processing entry: {entry_id}")
 
         meta_file = entry_dir / "metadata.json"
         aligned_transcript_file = entry_dir / "transcript.aligned.json"
@@ -115,6 +113,10 @@ class KnessetNormalizer(BaseNormalizer):
             return False
 
         if need_align:
+
+            logger.info(f"Starting normalization of entry {entry_id}")
+            tqdm.write(f"Processing entry: {entry_id}")
+
             # Get language
             language = self.get_language(metadata)
 
@@ -146,6 +148,8 @@ class KnessetNormalizer(BaseNormalizer):
                 )
             except Exception as e:
                 tqdm.write(f" - Alignment failed for entry {entry_id}: {e}")
+                if abort_on_error:
+                    raise e
                 return False
         else:
             try:
@@ -204,6 +208,7 @@ def normalize_plenums(
     force_rescore: bool = False,
     failure_threshold: float = DEFAULT_FAILURE_THRESHOLD,
     plenum_ids: Optional[List[str]] = None,
+    abort_on_error: bool = False,
 ) -> None:
     """
     Normalize Knesset plenums.
@@ -216,6 +221,7 @@ def normalize_plenums(
         force_rescore: Whether to force recalculation of quality score
         failure_threshold: Threshold for alignment failure
         plenum_ids: Optional list of plenum IDs to process (if None, process all)
+        abort_on_err: If specified will crash on error instead of skipping that entry
     """
 
     # Normalize plenums
@@ -229,6 +235,7 @@ def normalize_plenums(
         force_reprocess=force_normalize_reprocess,
         force_rescore=force_rescore,
         entry_ids=plenum_ids,
+        abort_on_error=abort_on_error,
     )
 
 
