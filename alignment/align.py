@@ -236,11 +236,6 @@ def align_transcript_to_audio(
             )
             found_at_text_idx = 0
 
-        # find the segment that contains the start idx
-        # and the index of the text within that segment
-        curr_matched_segment_idx = 0
-        index_within_segment = found_at_text_idx
-
         # Recall the latest known aligned timestamp - upcoming segments cannot
         # timestamp below it
         top_aligned_timestamp = aligned_pieces[-1].end if aligned_pieces else 0
@@ -259,6 +254,11 @@ def align_transcript_to_audio(
             and segments_after_assumed_confusion_zone[0].start < max_confusion_zone_end
         ):
             segments_after_assumed_confusion_zone = segments_after_assumed_confusion_zone[1:]
+        
+        # find the segment that contains the start idx
+        # and the index of the text within that segment
+        curr_matched_segment_idx = 0
+        index_within_segment = found_at_text_idx
         
         # if any segments found covering the confusion zone - analyze them to figure
         # out what exactly is to be skipped or already aligned

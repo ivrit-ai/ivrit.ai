@@ -361,7 +361,7 @@ def main() -> None:
             msg = f" - ERROR: Unexpected error processing plenum {plenum_id}: {e}"
             tqdm.write(msg)
             logging.warning(msg)
-            if args.abort_on_transcript_error:
+            if args.abort_on_error:
                 raise e
             tqdm.write(f" - Skipping to next plenum")
 
