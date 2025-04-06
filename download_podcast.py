@@ -53,7 +53,6 @@ def download_podcasts(feeds: list, target_dir: str):
                 downloaded_entries.add(entry_id)
 
                 download_link, download_len, file_type = extract_download_link(entry.links)
-                pbar.write(f"Raw download link: {download_link}")
 
                 try:
                     date_obj = datetime.strptime(date, "%a, %d %b %Y %H:%M:%S %Z")
@@ -72,8 +71,6 @@ def download_podcasts(feeds: list, target_dir: str):
                 fn_done = target_dir / f"{raw_fn}.done"
 
                 if not fn_done.exists():
-                    pbar.write(f"Downloading {fn}...")
-                    pbar.write(f"link: {download_link}")
                     try:
                         download_file(download_link, fn)
                     except yt_dlp.utils.DownloadError:
@@ -81,7 +78,7 @@ def download_podcasts(feeds: list, target_dir: str):
                         pbar.update(1)
                         continue
 
-                    if file_type != "m4a":
+                    if not file_type in ['mp3', 'm4a']:
                         # This code used pydub in the past.
                         # pydub fails conversion for some cases, while ffmpeg plays nice for a wider range of inputs.
                         os.system(f"ffmpeg -loglevel error -hide_banner -stats -i {shlex.quote(str(fn))} -c:a aac -q:a 0 {shlex.quote(str(fn_mp3))}")
