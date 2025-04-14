@@ -1,4 +1,5 @@
 import argparse
+import logging
 import pathlib
 import sys
 from abc import ABC, abstractmethod
@@ -179,6 +180,7 @@ def normalize_entries(
 
     try:
         # Create a thread pool with as many workers as there are devices
+        total_done = 0
         with ThreadPoolExecutor(max_workers=num_workers) as executor:
             # Process entries in parallel using threads
             futures = [executor.submit(process_entry, meta_file.parent) for meta_file in meta_files]
@@ -186,6 +188,8 @@ def normalize_entries(
             for future in tqdm(as_completed(futures), total=len(futures), desc="Normalizing entries"):
                 try:
                     future.result()
+                    total_done += 1
+                    logging.info(f"done/total: {total_done}/{len(futures)} ({total_done/len(futures):.2f}% done)")
                 except Exception as e:
                     # The processor is responsilbe to catch and suppress if skipping
                     # after error is required. Here, the runner assumes any raised
