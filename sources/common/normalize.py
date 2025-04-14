@@ -189,7 +189,7 @@ def normalize_entries(
                 try:
                     future.result()
                     total_done += 1
-                    logging.info(f"done/total: {total_done}/{len(futures)} ({total_done/len(futures):.2f}% done)")
+                    logging.info(f"done/total: {total_done}/{len(futures)} ({total_done * 100/len(futures):.2f}% done)")
                 except Exception as e:
                     # The processor is responsilbe to catch and suppress if skipping
                     # after error is required. Here, the runner assumes any raised
