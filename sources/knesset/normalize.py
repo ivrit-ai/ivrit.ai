@@ -22,6 +22,7 @@ from sources.knesset.metadata import PlenumMetadata
 # Create a logger for this module
 logger = logging.getLogger(__name__)
 
+
 class KnessetNormalizer(BaseNormalizer):
     """Normalizer for Knesset plenum entries."""
 
@@ -97,9 +98,9 @@ class KnessetNormalizer(BaseNormalizer):
         start_time = time.time()
 
         meta_file = entry_dir / "metadata.json"
-        aligned_transcript_file = entry_dir / "transcript.aligned.json"
+        aligned_transcript_file = entry_dir / self.aligned_transcript_filename
 
-        need_align = force_reprocess or (not aligned_transcript_file.exists())
+        need_align = self.should_normalize(meta_file, force_reprocess)
         need_rescore = force_rescore or need_align
 
         if not (need_align or need_rescore):
@@ -144,7 +145,7 @@ class KnessetNormalizer(BaseNormalizer):
                     model=self.model,
                     language=language,
                     zero_duration_segments_failure_ratio=self.failure_threshold,
-                    entry_id=entry_id
+                    entry_id=entry_id,
                 )
             except Exception as e:
                 tqdm.write(f" - Alignment failed for entry {entry_id}: {e}")
@@ -188,13 +189,13 @@ class KnessetNormalizer(BaseNormalizer):
         processing_time = end_time - start_time
         entry_duration = self.get_duration(metadata)
         processing_ratio = entry_duration / processing_time if processing_time > 0 else 0
-        
+
         logger.info(
             f"Entry {entry_id} (duration {entry_duration:.2f} seconds) normalization done. "
             f"Took: {processing_time:.2f} seconds ({processing_ratio:.2f} s/sec). "
             f"Quality Score: {quality_score:.4f}"
         )
-        
+
         tqdm.write(f" - Processed entry {entry_id}: quality score = {quality_score}")
         return True
 

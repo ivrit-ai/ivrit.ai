@@ -118,6 +118,8 @@ def normalize_entries(
     align_model: str,
     normalizer_class: Callable,
     failure_threshold: float,
+    force_reprocess: bool,
+    force_rescore: bool,
     **kwargs,
 ) -> None:
     """
@@ -155,13 +157,25 @@ def normalize_entries(
 
     # Find all entry directories by looking for metadata.json files
     meta_files = list(input_folder.glob("*/metadata.json"))
+    if not meta_files:
+        print("No entry metadata.json files found in input folder.")
+        return
+
     entry_ids = kwargs.pop("entry_ids", None)
     if entry_ids:
         meta_files = [mf for mf in meta_files if mf.parent.name in entry_ids]
 
-    if not meta_files:
-        print("No entry metadata.json files found in input folder.")
-        return
+    # Pre filter any entries which do not need anhy processing
+    entry_count_pre_processing_filter = len(meta_files)
+    any_normalizer: BaseNormalizer = normalizer_queue.get()
+    meta_files = [mf for mf in meta_files if any_normalizer.should_process(mf, force_reprocess, force_rescore)]
+    entry_count_post_processing_filter = len(meta_files)
+    if entry_count_pre_processing_filter != entry_count_post_processing_filter:
+        if entry_count_post_processing_filter > 0:
+            print(f"Only {entry_count_post_processing_filter}/{entry_count_pre_processing_filter} require processing.")
+        else:
+            print(f"No entries require processing.")
+            return
 
     # Define the worker function
     def process_entry(entry_dir):
@@ -172,7 +186,7 @@ def normalize_entries(
             normalizer.load_model()
 
             # Process the entry
-            result = normalizer.normalize_entry(entry_dir=entry_dir, **kwargs)
+            result = normalizer.normalize_entry(entry_dir=entry_dir, force_reprocess=force_reprocess, **kwargs)
             return result
         finally:
             # Release the normalizer back to the queue
@@ -216,6 +230,7 @@ class BaseNormalizer(ABC):
         self.align_device = align_device
         self.failure_threshold = failure_threshold
         self.model = None
+        self.aligned_transcript_filename = "transcript.aligned.json"
 
     @abstractmethod
     def get_entry_id(self, entry_dir: pathlib.Path) -> str:
@@ -256,6 +271,26 @@ class BaseNormalizer(ABC):
     def save_metadata(self, meta_file: pathlib.Path, metadata: Any) -> None:
         """Save metadata to file."""
         pass
+
+    def is_normalized(self, meta_file: pathlib.Path) -> bool:
+        """If this entry was normalized already"""
+        aligned_transcript_file = meta_file.parent / self.aligned_transcript_filename
+        return aligned_transcript_file.exists()
+
+    def should_normalize(
+        self,
+        meta_file: pathlib.Path,
+        force_reprocess: bool = False,
+    ) -> bool:
+        return not self.is_normalized(meta_file) or force_reprocess
+
+    def should_process(
+        self,
+        meta_file: pathlib.Path,
+        force_reprocess: bool = False,
+        force_rescore: bool = False,
+    ) -> bool:
+        return self.should_normalize(meta_file, force_reprocess) or force_rescore
 
     def update_metadata_with_stats(
         self,
@@ -328,9 +363,9 @@ class BaseNormalizer(ABC):
         tqdm.write(f"Processing entry: {entry_id}")
 
         meta_file = entry_dir / "metadata.json"
-        aligned_transcript_file = entry_dir / "transcript.aligned.json"
+        aligned_transcript_file = entry_dir / self.aligned_transcript_filename
 
-        need_align = force_reprocess or (not aligned_transcript_file.exists())
+        need_align = self.should_normalize(meta_file, force_reprocess)
         need_rescore = force_rescore or need_align
 
         if not (need_align or need_rescore):
