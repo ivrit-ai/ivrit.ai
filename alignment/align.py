@@ -91,14 +91,20 @@ def align_transcript_to_audio(
     min_confusion_zone_start = 0
     max_confusion_zone_end = 0
     current_pre_confusion_zone_tries = 0
-    to_align_next = unaligned.text  # We aligns text not segments
+    to_align_next = unaligned.text  # We align text not segments
 
     # Create a progress bar for the alignment process
     progress_bar = tqdm(total=audio_duration, unit="sec", desc=f"Aligning {entry_id or 'Entry'}")
     while not done:
         # Get the audio slice
         audio = SeekableAudioLoader(
-            str(audio_file), sr=SAMPLE_RATE, stream=True, load_sections=[[slice_start, None]], test_first_chunk=False
+            str(audio_file),
+            sr=SAMPLE_RATE,
+            stream=True,
+            load_sections=[[slice_start, None]],
+            test_first_chunk=False,
+            # We expect long stretches of aligned audio and possible IO contention
+            buffer_size=300 * SAMPLE_RATE,
         )
 
         # Align it until it breaks
@@ -106,8 +112,16 @@ def align_transcript_to_audio(
             audio, to_align_next, language=language, failure_threshold=zero_duration_segments_failure_ratio
         )
 
+        any_good_alignemnts = aligned.segments[0].start != aligned.segments[-1].end
+        # If unable to do any proper alignment - assume a confusion zone up front
+        if not any_good_alignemnts:
+            confusion_zone_start = slice_start
+            confusion_zone_end = confusion_zone_start + min_confusion_zone_skip_duration
+        else:
+            # find the confusion zone
+            confusion_zone_start, confusion_zone_end = get_confusion_zone(aligned)
+
         # Check if done == No confusion zone exists
-        confusion_zone_start, confusion_zone_end = get_confusion_zone(aligned)
         if confusion_zone_start is None:
             # Keep aligned segments and stop aligning
             aligned_pieces.extend(aligned.segments)
@@ -254,12 +268,12 @@ def align_transcript_to_audio(
             and segments_after_assumed_confusion_zone[0].start < max_confusion_zone_end
         ):
             segments_after_assumed_confusion_zone = segments_after_assumed_confusion_zone[1:]
-        
+
         # find the segment that contains the start idx
         # and the index of the text within that segment
         curr_matched_segment_idx = 0
         index_within_segment = found_at_text_idx
-        
+
         # if any segments found covering the confusion zone - analyze them to figure
         # out what exactly is to be skipped or already aligned
         if segments_around_confusion_zone:
@@ -293,14 +307,12 @@ def align_transcript_to_audio(
                     text=initial_unaligned_segment_in_confusion_zone.text[index_within_segment:],
                 )
 
-
         # If no segments after the confusion zone, we are done
         if not segments_after_assumed_confusion_zone:
             done = True
             first_segment_to_continue_aligning = None
         else:
             first_segment_to_continue_aligning = segments_after_assumed_confusion_zone[0]
-
 
         # If segments found within/around confusion zone
         # Handle their skipping, and adding them to the "aligned" pieces
@@ -320,7 +332,7 @@ def align_transcript_to_audio(
                     # +1, since we will prepend this first segment (it might required prefix removal)
                     + 1 : first_segment_to_continue_aligning.id
                 ]
-        
+
             # prepend the initial segment (which might have had prefix removal)
             # containing only the part which is skipped
             confusing_segments_to_skip = [initial_unaligned_segment_in_confusion_zone] + confusing_segments_to_skip
@@ -330,7 +342,9 @@ def align_transcript_to_audio(
             # that allow those segmwnts to co-exist with the propelry aliged segments.
             skipped_text_to_align = get_text_from_segments(confusing_segments_to_skip)
             align_skipped_start_from = max(top_aligned_timestamp, confusing_segments_to_skip[0].start)
-            align_skipped_end_at = first_segment_to_continue_aligning.start if first_segment_to_continue_aligning else None
+            align_skipped_end_at = (
+                first_segment_to_continue_aligning.start if first_segment_to_continue_aligning else None
+            )
             audio = SeekableAudioLoader(
                 str(audio_file),
                 sr=SAMPLE_RATE,
@@ -361,7 +375,6 @@ def align_transcript_to_audio(
             # on next iterations
             top_matched_unaligned_timestamp = confusing_segments_to_skip[-1].end
 
-        
         # Prepare for next align attempt
         if not done:
             to_align_next = get_text_from_segments(segments_after_assumed_confusion_zone)
@@ -372,7 +385,7 @@ def align_transcript_to_audio(
             slice_start = first_segment_to_continue_aligning.start
 
             # Update progress bar
-            progress_bar.update(slice_start - progress_bar.n)        
+            progress_bar.update(slice_start - progress_bar.n)
 
         # Forget prev confusion zone
         min_confusion_zone_start = 0

@@ -30,6 +30,7 @@ class BreakableAligner(Aligner):
         confusion_warmup_duration: float = 10.0,
         good_seg_prob_threshold: float = 0.4,
         bad_to_good_ratio_threshold: float = 0.8,
+        max_time_without_committed_words: float = 60.0,
         **kwargs,
     ):
         """Initialize the BreakableAligner.
@@ -48,6 +49,7 @@ class BreakableAligner(Aligner):
         self.confusion_warmup_duration = confusion_warmup_duration
         self.good_seg_prob_threshold = good_seg_prob_threshold
         self.bad_to_good_ratio_threshold = bad_to_good_ratio_threshold
+        self.max_time_without_committed_words = max_time_without_committed_words
         super().__init__(*args, **kwargs)
 
     def _update_pbar(
@@ -153,6 +155,7 @@ class BreakableAligner(Aligner):
             total_word_duration = 0.0
             current_bad_good_ratio = None
             current_avg_prob = None
+            last_commited_words_ts = None
 
             while self._all_word_tokens:
                 audio_segment, seek = self.audio_loader.next_valid_chunk(self._seek_sample, self.n_samples)
@@ -178,6 +181,11 @@ class BreakableAligner(Aligner):
                     window_words, total_word_duration, current_bad_good_ratio, current_avg_prob = (
                         self.update_word_prob_window(window_words, total_word_duration, self._curr_words, last_ts)
                     )
+                    last_commited_words_ts = last_ts
+                # Even if no words are commited - we need a base line to detect
+                # long stretches without any commited words
+                elif last_commited_words_ts is None:
+                    last_commited_words_ts = last_ts
 
                 self._update_pbar(tqdm_pbar, last_ts, current_bad_good_ratio, current_avg_prob)
 
@@ -203,6 +211,14 @@ class BreakableAligner(Aligner):
                     premature_stop = True
                     if self.options.progress.verbose:
                         tqdm_pbar.write(f"Breaking - bad/good ratio too high: {current_bad_good_ratio:.2f}")
+                    break
+
+                # If too long has passed since we commited any words - skipping makes sense.
+                # Break so the top level skip is performed
+                if last_ts - last_commited_words_ts > self.max_time_without_committed_words:
+                    premature_stop = True
+                    if self.options.progress.verbose:
+                        tqdm_pbar.write(f"Breaking - too much duration without comitted words")
                     break
 
             self._update_pbar(
