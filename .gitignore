@@ -18,3 +18,7 @@ tmp_*.py
 
 # Local Configuration files
 config/
+
+# Local files
+*.wav
+*.bin

@@ -7,6 +7,8 @@ Paper: https://arxiv.org/abs/2307.08720
 
 # Usage Guidance
 
+See [examples](./examples) for how to use the models.
+
 ## Downloading From Sources
 
 ### Crowd Recital
