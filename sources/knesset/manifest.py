@@ -5,6 +5,7 @@ from sources.common.manifest import build_manifest as common_build_manifest, COM
 KNESSET_COLUMNS = [
     "plenum_id",
     "duration",
+    "plenum_date",
 ]
 
 
