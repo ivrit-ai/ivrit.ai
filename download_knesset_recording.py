@@ -629,7 +629,7 @@ def create_recording_transcript_vtt(text: str, time_index: pd.DataFrame) -> WebV
 
 def cleanup_html_time_map_arr(time_map_arr: np.ndarray) -> np.ndarray:
     min_referenced_time_idx = max(
-        1, np.argmin(time_map_arr[time_map_arr > 0])
+        1, np.argmin(np.where(time_map_arr > 0, time_map_arr, np.inf))
     )  # find index of the lowest non-0 time value is at
     # remove leading high values before that minimal value- reset to 0 to ignore those "future ts" which are bad data
     time_map_arr[:min_referenced_time_idx] = 0

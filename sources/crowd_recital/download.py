@@ -1,7 +1,5 @@
 import argparse
-import json
 import pathlib
-from dataclasses import asdict
 
 import boto3
 import psycopg
@@ -9,22 +7,9 @@ from botocore.exceptions import ClientError
 from psycopg.rows import dict_row
 from tqdm import tqdm
 
-from sources.crowd_recital.metadata import SessionMetadata, source_id, source_type
 from sources.crowd_recital.manifest import build_manifest
-
-from .normalize import add_normalize_args, normalize_sessions
-
-
-def load_download_state(state_file: pathlib.Path) -> dict:
-    if state_file.exists():
-        with open(state_file, "r") as f:
-            return json.load(f)
-    return {}
-
-
-def save_download_state(state: dict, state_file: pathlib.Path) -> None:
-    with open(state_file, "w") as f:
-        json.dump(state, f, indent=2)
+from sources.crowd_recital.metadata import SessionMetadata, source_id, source_type
+from sources.crowd_recital.normalize import add_normalize_args, normalize_sessions
 
 
 def list_recording_sessions(s3_client, bucket: str, prefix: str = "") -> list:
@@ -177,7 +162,7 @@ def main() -> None:
     parser.add_argument(
         "--session-ids",
         type=str,
-        action="append",
+        nargs="+",
         default=[],
         help="Filter to process only the specified session ids (can be specified multiple times)",
     )
@@ -234,7 +219,7 @@ def main() -> None:
             per_segment_quality_scores=None,
         )
         with open(metadata_file, "w") as f:
-            json.dump(asdict(session_metadata_instance), f, indent=2)
+            f.write(session_metadata_instance.model_dump_json(indent=2))
 
     # After downloads complete, process normalization if not skipped
     if not args.skip_normalize:
@@ -242,8 +227,9 @@ def main() -> None:
         normalize_sessions(
             output_dir,
             align_model=args.align_model,
-            align_device=args.align_device,
-            force_reprocess=args.force_reprocess,
+            align_devices=args.align_devices,
+            align_device_density=args.align_device_density,
+            force_reprocess=args.force_normalize_reprocess,
             force_rescore=args.force_rescore,
             failure_threshold=args.failure_threshold,
             session_ids=args.session_ids,
