@@ -53,6 +53,8 @@ def download_podcasts(feeds: list, target_dir: str):
                 downloaded_entries.add(entry_id)
 
                 download_link, download_len, file_type = extract_download_link(entry.links)
+                if not download_link:
+                    continue
 
                 try:
                     date_obj = datetime.strptime(date, "%a, %d %b %Y %H:%M:%S %Z")
@@ -81,7 +83,7 @@ def download_podcasts(feeds: list, target_dir: str):
                     if not file_type in ['mp3', 'm4a']:
                         # This code used pydub in the past.
                         # pydub fails conversion for some cases, while ffmpeg plays nice for a wider range of inputs.
-                        os.system(f"ffmpeg -loglevel error -hide_banner -stats -i {shlex.quote(str(fn))} -c:a aac -q:a 0 {shlex.quote(str(fn_mp3))}")
+                        os.system(f"ffmpeg -loglevel error -hide_banner -stats -i {shlex.quote(str(fn))} {shlex.quote(str(fn_m4a))}")
                         os.unlink(fn)
 
                     fn_done.touch()
@@ -93,13 +95,17 @@ def is_youtube_url(url):
     return url.startswith("https://www.youtube.com")
 
 
+def is_soundcloud_url(url):
+    return url.startswith("https://soundcloud.com")
+
+
 def download_file(url, target):
     status = 0
 
     NUM_RETRIES = 3
     for i in range(NUM_RETRIES):
-        if is_youtube_url(url):
-            status = download_youtube_video(url, target)
+        if is_youtube_url(url) or is_soundcloud_url(url):
+            status = download_with_ytdlp(url, target)
         else:
             status = os.system(f"wget {shlex.quote(url)} -O {shlex.quote(str(target))}")
 
@@ -116,8 +122,8 @@ def download_file(url, target):
         target.unlink()
 
 
-def download_youtube_video(url, target):
-    # Options for youtube_dl: fetch URL and metadata without downloading the actual video
+def download_with_ytdlp(url, target):
+    # Options for yt-dlp: fetch URL and metadata without downloading the actual video
     ydl_opts = {
         "format": "bestaudio/best",  # Get the best audio or video file
         "quiet": True,  # Do not print messages to stdout
@@ -129,10 +135,9 @@ def download_youtube_video(url, target):
         "outtmpl": str(target),
     }
 
-    # Fetch the URL of the video/audio using youtube_dl
+    # Fetch the URL of the video/audio using yt-dlp
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info_dict = ydl.extract_info(url, download=True)
-
 
     return 0
 
@@ -164,14 +169,16 @@ def extract_download_link(links):
             file_type = "m4a"
         elif link.type == "video/mp4":
             file_type = "m4a"
+        elif link.type == "soundcloud":
+            file_type = "soundcloud"
         else:
             print("Unknown download type detected. Exiting.")
             sys.exit(2)
 
     if not download_link or download_len == None or not file_type:
         print(links)
-        print("No download links found. Exiting.")
-        sys.exit(2)
+        print("No download links found.")
+        return None, None, None
 
     return download_link, download_len, file_type
 

@@ -38,11 +38,15 @@ def fetch_channel_info(channel_url, limit=None):
             info = ydl.extract_info(channel_url, download=False)
             if '_type' in info:
                 if info['_type'] == 'playlist':
+                    if info.get('description', '') == '':
+                        info['description'] = 'No description'
+
                     channel_info = {
                         'title': info.get('title', 'YouTube Channel Feed'),
-                        'description': info.get('description', 'Full feed of all videos from the channel'),
+                        'description': info['description'],
                         'id': info.get('id', 'unknown'),
                     }
+
                     # Extract video URLs and IDs from all playlists
                     video_urls = collect_entries(info.get('entries', []))
                     return channel_info, video_urls
@@ -71,6 +75,7 @@ def fetch_video_details(video_url):
                 return {
                     'id': info.get('id', ''),
                     'title': info.get('title', 'No title'),
+                    'url': video_url, 
                     'description': info.get('description', ''),
                     'upload_date': info.get('upload_date', ''),
                     'duration': info.get('duration', 0),
@@ -98,17 +103,19 @@ def generate_rss(channel_info, videos, channel_url):
         upload_date = video.get("upload_date")
         pub_date = datetime.strptime(upload_date, "%Y%m%d").replace(tzinfo=timezone.utc) if upload_date else datetime.now(timezone.utc)
 
+        video_url = video.get('url')
+        
         fe.title(title)
-        fe.link(href=f'https://www.youtube.com/watch?v={video_id}')
+        fe.link(href=video_url)
         fe.guid(video_id)
         fe.description(description)
         fe.pubDate(pub_date)
         
-        # Add enclosure for the video
+        # Add enclosure for the video/audio
         fe.enclosure(
-            url=f'https://www.youtube.com/watch?v={video_id}',
-            length=video.get('duration', 0) * 1024 * 1024,  # Approximate size in bytes
-            type='video/mp4'
+            url=video_url,
+            length=0,  # Approximate size in bytes
+            type='soundcloud' if 'soundcloud' in video_url else 'video/mp4'
         )
 
     # Get raw XML
@@ -128,11 +135,12 @@ def generate_rss(channel_info, videos, channel_url):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate RSS feed from YouTube channel")
-    parser.add_argument("channel_id", help="YouTube channel ID")
+    parser.add_argument("--channel", required=True, help="YouTube channel URL")
     parser.add_argument("--limit", type=int, help="Limit the number of episodes to process")
     args = parser.parse_args()
 
-    channel_url = f"https://www.youtube.com/channel/{args.channel_id}"
+    channel_url = args.channel
+
     print("🔍 Fetching channel information...")
     channel_info, video_urls = fetch_channel_info(channel_url, args.limit)
     
