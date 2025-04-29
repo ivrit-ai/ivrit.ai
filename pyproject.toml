@@ -1,3 +1,11 @@
+[project]
+name = "ivrit-ai"
+version = "0.1.0"
+description = "ivrit.ai codebase"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
 [tool.black]
 line-length = 120
 
