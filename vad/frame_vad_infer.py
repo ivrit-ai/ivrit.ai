@@ -95,7 +95,7 @@ def generate_frame_vad_predictions(audio_files: list[str], final_output_fir: str
         flat_input_file = os.path.abspath(flat_input_file)
         audio_files_to_adapt_from_to_tuples.append((input_file, flat_input_file))
 
-    print(f"pre-trasncoding {len(audio_files_to_adapt_from_to_tuples)} audio files")
+    print(f"pre-transcoding {len(audio_files_to_adapt_from_to_tuples)} audio files")
     parallel_audio_file_adapt(
         audio_files_to_adapt_from_to_tuples, max_parallel_workers=config["nemo_vad_pretranscode_workers"]
     )
@@ -169,7 +169,7 @@ def generate_frame_vad_predictions(audio_files: list[str], final_output_fir: str
         base_file_name = temp_frame_result_file_name.stem  # without .frame
         # If there is not "stem" before the frame - NeMo stipped the "wav" suffix
         # (which is a very non general way of handling datasets, so we have to accommodate it)
-        if base_file_name == Path(base_file_name).stem:
+        if not base_file_name.endswith(".wav"):
             base_file_name += ".wav"
 
         # recover the original input audio filew name + path

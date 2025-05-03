@@ -1,5 +1,9 @@
 import os
 from pathlib import Path
+import threading
+from typing import List, Union, Callable
+import queue
+from queue import Queue
 
 import stable_whisper
 import torch
@@ -44,8 +48,84 @@ def exclude_already_transcribed(audio_files: str, final_output_dir: str):
     return pruned_audio_files
 
 
-def transcribe(audio_files: str, final_output_dir: str, config: dict):
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+def transcribe_core(
+    audio_file: str,
+    final_output_dir: str,
+    config: dict,
+    transcribe_fn: Callable,
+    use_stable_ts: bool,
+    device_index: int = None
+):
+    """Transcribe a single audio file using the provided transcribe function."""
+    input_vad_root_dir = config.get("vad_input_dir") or final_output_dir
+    without_timestamps = config.get("without_timestamps", False)
+    get_word_level_timestamp = config.get("get_word_level_timestamp", True)
+    language = config.get("language", "he")
+    consider_speech_clips = config.get("consider_speech_clips", True)
+    require_speech_clips = config.get("require_speech_clips", True)
+    speech_clips_no_speech_min_duration = config.get("speech_clips_no_speech_min_duration", 4)
+
+    output_filename = get_output_filename(audio_file, final_output_dir)
+
+    transcribe_options = dict(
+        without_timestamps=without_timestamps,
+        word_timestamps=get_word_level_timestamp,
+    )
+
+    # If vad probs exist, get speech clips to transcribe over the input file
+    if consider_speech_clips:
+        clip_timestamps, vad_found = get_speech_clips_from_vad(
+            audio_file, input_vad_root_dir, speech_clips_no_speech_min_duration
+        )
+        if not vad_found and require_speech_clips:
+            return
+        transcribe_options["clip_timestamps"] = clip_timestamps
+
+    audio = load_audio_in_whisper_format(audio_file)
+
+    result_raw = transcribe_fn(audio, language=language, **transcribe_options)
+    if use_stable_ts:
+        result: WhisperResult = result_raw
+    else:
+        segments, _ = result_raw
+        final_segments = []
+        for segment in segments:
+            segment = segment._asdict()
+            if (words := segment.get("words")) is not None:
+                segment["words"] = [w._asdict() for w in words]
+            else:
+                del segment["words"]
+            final_segments.append(segment)
+        result: WhisperResult = WhisperResult(final_segments)
+
+    os.makedirs(Path(output_filename).parent, exist_ok=True)
+    result.save_as_json(output_filename)
+
+
+def worker(
+    job_queue: Queue,
+    final_output_dir: str,
+    config: dict,
+    transcribe_fn: Callable,
+    use_stable_ts: bool,
+):
+    """Worker function that processes files from the queue until it's empty."""
+    while True:
+        try:
+            audio_file = job_queue.get_nowait()
+            transcribe_core(audio_file, final_output_dir, config, transcribe_fn, use_stable_ts)
+            job_queue.task_done()
+        except queue.Empty:
+            break
+
+
+def transcribe(audio_files: List[str], final_output_dir: str, config: dict):
+    if torch.cuda.is_available():
+        device = "cuda"
+        num_devices = torch.cuda.device_count()
+    else:
+        device = "cpu"
+        num_devices = 1
 
     # Prune audio files which are already processed
     if not config.get("force_reprocess", False):
@@ -54,69 +134,43 @@ def transcribe(audio_files: str, final_output_dir: str, config: dict):
     if len(audio_files) == 0:
         return
 
-    input_vad_root_dir = config.get("vad_input_dir") or final_output_dir
-    without_timestamps = config.get("without_timestamps", False)
-    get_word_level_timestamp = config.get("get_word_level_timestamp", True)
-    use_stable_ts = config.get("use_stable_ts", True)
+    # Initialize models and transcribe functions
     whisper_model_name = config.get("whisper_model_name", "tiny")
-    language = config.get("language", "he")
     compute_type = config.get("compute_type", "int8")
-    consider_speech_clips = config.get("consider_speech_clips", True)
-    require_speech_clips = config.get("require_speech_clips", True)
-    speech_clips_no_speech_min_duration = config.get("speech_clips_no_speech_min_duration", 4)
+    use_stable_ts = config.get("use_stable_ts", True)
 
-    faster_whisper_model_init_options = {
-        "device": device,
-        "compute_type": compute_type,
-    }
+    transcribe_fns = []
+    for i in range(num_devices):
+        faster_whisper_model_init_options = {
+            "device": device,
+            "device_index": [i] if device == "cuda" else None,
+            "compute_type": compute_type,
+        }
 
-    # Setup the model
-    transcribe_fn = None
-    if use_stable_ts:
-        model = stable_whisper.load_faster_whisper(whisper_model_name, **faster_whisper_model_init_options)
-        transcribe_fn = model.transcribe_stable
-    else:
-        model = WhisperModel(whisper_model_name, **faster_whisper_model_init_options)
-        transcribe_fn = model.transcribe
-
-    for audio_file in audio_files:
-        output_filename = get_output_filename(audio_file, final_output_dir)
-
-        transcribe_options = dict(
-            # TODO - beam search, other configs?
-            without_timestamps=without_timestamps,
-            word_timestamps=get_word_level_timestamp,
-        )
-
-        # If vad probs exist, get speech clips to transcribe over the input file
-        # Unless configured to not use clips
-        if consider_speech_clips:
-            clip_timestamps, vad_found = get_speech_clips_from_vad(
-                audio_file, input_vad_root_dir, speech_clips_no_speech_min_duration
-            )
-            if not vad_found and require_speech_clips:
-                continue
-            transcribe_options["clip_timestamps"] = clip_timestamps
-
-        audio = load_audio_in_whisper_format(
-            audio_file,
-        )
-
-        result_raw = transcribe_fn(audio, language=language, **transcribe_options)
         if use_stable_ts:
-            result: WhisperResult = result_raw
+            model = stable_whisper.load_faster_whisper(whisper_model_name, **faster_whisper_model_init_options)
+            transcribe_fn = model.transcribe_stable
         else:
-            segments, _ = result_raw
-            final_segments = []
-            for segment in segments:
-                segment = segment._asdict()
-                if (words := segment.get("words")) is not None:
-                    segment["words"] = [w._asdict() for w in words]
-                else:
-                    del segment["words"]
-                final_segments.append(segment)
-            result: WhisperResult = WhisperResult(final_segments)
+            model = WhisperModel(whisper_model_name, **faster_whisper_model_init_options)
+            transcribe_fn = model.transcribe
 
-        output_filename = get_output_filename(audio_file, final_output_dir)
-        os.makedirs(Path(output_filename).parent, exist_ok=True)
-        result.save_as_json(output_filename)
+        transcribe_fns.append(transcribe_fn)
+
+    # Create a queue and add all files to it
+    file_queue = Queue()
+    for audio_file in audio_files:
+        file_queue.put(audio_file)
+
+    # Create and start threads
+    threads = []
+    for i in range(num_devices):
+        thread = threading.Thread(
+            target=worker,
+            args=(file_queue, final_output_dir, config, transcribe_fns[i], use_stable_ts)
+        )
+        threads.append(thread)
+        thread.start()
+
+    # Wait for all threads to complete
+    for thread in threads:
+        thread.join()
