@@ -130,19 +130,37 @@ def process_av(
 
 
 def extract_metadata_fields(metadata_file: pathlib.Path, field_specs_to_extract: List[str]) -> Dict[str, Any]:
-    # split fields to source,target pairs
-    src_target_fields = [field.split(":") for field in field_specs_to_extract]
+    # Parse field specs: <source>:<target>[:should_hash]
+    parsed_fields = []
+    for spec in field_specs_to_extract:
+        parts = spec.split(":")
+        if len(parts) == 2:
+            src, target = parts
+            should_hash = False
+        elif len(parts) == 3:
+            src, target, should_hash_str = parts
+            should_hash = should_hash_str in ("1", "true", "yes")
+        else:
+            continue  # Invalid format
+        parsed_fields.append((src, target, should_hash))
 
-    # only supported targests are accepted
+    # only supported targets are accepted
     supported_target_md_fields = ["user_id"]
-    src_target_fields = [field for field in src_target_fields if field[1] in supported_target_md_fields]
+    parsed_fields = [field for field in parsed_fields if field[1] in supported_target_md_fields]
 
-    if not src_target_fields:
+    if not parsed_fields:
         return {}
 
     with open(metadata_file, "r") as f:
         metadata = json.load(f)
-        target_md_fields = {field[1]: metadata.get(field[0], None) for field in src_target_fields}
+        target_md_fields = {}
+        for src, target, should_hash in parsed_fields:
+            value = metadata.get(src, None)
+            if value is not None and should_hash:
+                import hashlib
+
+                value = hashlib.md5(str(value).encode()).hexdigest()
+            target_md_fields[target] = value
         return target_md_fields
 
 
@@ -184,7 +202,11 @@ def main() -> None:
         type=str,
         nargs="+",
         default=[],
-        help="Fields to extract from metadata files. Format is <source_md_field_name>:<target_md_field_name>. Can be specified multiple times. Support only 'user_id' target md field",
+        help=(
+            "Fields to extract from metadata files. Format is <source_md_field_name>:<target_md_field_name>[:should_hash]."
+            " should_hash (optional, 1 to hash the value with SHA256 for PII fields like user_id)."
+            " Can be specified multiple times. Supports only 'user_id' target md field"
+        ),
     )
     parser.add_argument("--input-source-id", type=str, default="unknown", help="Source ID for the input dataset")
     parser.add_argument(
