@@ -71,7 +71,7 @@ def process_transcribe(args):
         "use_stable_ts": True,
         "whisper_model_name": args.transcribe_model,
         "language": "he",
-        "compute_type": "int8",
+        "compute_type": "float16",
     }
 
     transcribe(

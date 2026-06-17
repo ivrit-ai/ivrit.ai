@@ -213,7 +213,7 @@ def generate_frame_vad_predictions(
         base_file_name = temp_frame_result_file_name.stem  # without .frame
         # If there is not "stem" before the frame - NeMo stripped the "wav" suffix
         # (which is a very non general way of handling datasets, so we have to accommodate it)
-        if base_file_name == Path(base_file_name).stem:
+        if not base_file_name.endswith(".wav"):
             base_file_name += ".wav"
 
         # recover the original input audio file name + path
